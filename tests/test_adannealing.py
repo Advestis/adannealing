@@ -10,8 +10,7 @@ def wrong_loss(x, y) -> float:
 
 def loss_func(w) -> float:
     x = w[0]
-    y = w[1]
-    return (x ** 2 + y ** 2) ** 2 - (x ** 2 + y ** 2)
+    return (x - 5) * (x - 2) * (x - 1) * x
 
 
 # noinspection PyTypeChecker
@@ -369,3 +368,14 @@ def test_init(
         assert isinstance(ann.iterations, int)
         if iterations is not None:
             assert ann.iterations == iterations
+
+
+def test_fit():
+    ann = Annealer(
+        loss=loss_func,
+        weights_step_size=0.1,
+        bounds=np.array([[0, 6]]),
+        init_states=np.array([0]),
+        verbose=True
+    )
+    ann.fit()

@@ -116,7 +116,7 @@ class Annealer:
                 init_states = float(init_states)
             if not isinstance(init_states, float):
                 init_states = to_array(init_states, "init_states")
-                if len(init_states.shape) != 1:
+                if init_states.ndim != 1:
                     raise ValueError("'init_states' must be a 1-D numpy array")
             else:
                 if np.isnan(init_states):
@@ -198,6 +198,7 @@ class Annealer:
             self.init_states = self.bounds[:, 0] + np.random.uniform(
                 size=(1, len(self.bounds))
             ) * (self.bounds[:, 1] - self.bounds[:, 0])
+            self.init_states = self.init_states.flatten()
 
         if self.temp_step_size >= (self.temp_0 - self.temp_min):
             raise ValueError(f"temperature step size ({self.temp_step_size}) is larger than the temperature range, "
@@ -267,9 +268,9 @@ class Annealer:
             unit_v = np.random.uniform(size=(1, self.dimensions))
             unit_v = unit_v / np.linalg.norm(unit_v)
             assert np.isclose(np.linalg.norm(unit_v), 1.0)
-            cov = np.zeros((curr.shape[1], curr.shape[1]), float)
+            cov = np.zeros((curr.shape[0], curr.shape[0]), float)
             np.fill_diagonal(cov, self.weights_step_size)
-            candidate = np.random.multivariate_normal(mean=curr.ravel(), cov=cov).reshape(curr.shape)
+            candidate = np.random.multivariate_normal(mean=curr, cov=cov).reshape(curr.shape)
     
             # evaluate candidate point
             candidate_eval = self.loss(candidate.T)
