@@ -1,1 +1,1 @@
-from .complex import Complex, i
+from .annealer import Annealer

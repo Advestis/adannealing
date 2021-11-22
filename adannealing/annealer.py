@@ -2,6 +2,7 @@ import numpy as np
 from typing import Callable, Union
 import os
 import logging
+import inspect
 
 import pandas as pd
 
@@ -18,9 +19,9 @@ def to_array(value: Union[int, float, list, np.ndarray, pd.Series, pd.DataFrame]
             value = value.values
         else:
             raise TypeError(f"'{name}' must be castable into a numpy array, got a {type(value)}.")
-    if any(np.isnan(value)):
+    if any(np.isnan(value.flatten())):
         raise ValueError(f"'{name}' can not contain NANs")
-    return value
+    return value.astype(float)
 
 
 class Annealer:
@@ -94,13 +95,18 @@ class Annealer:
             Final temperature. Default is 0
         verbose: bool (default is False)
 
-        The number of iterations will be equal to int((temp_min - temp_0) / temp_step_size).
+        The number of iterations will be equal to int((temp_0 - temp_min) / temp_step_size).
         If temp_step_size is not specified, then the number of iterations is equal to 200. (0.5% at each step).
         """
 
         if not isinstance(loss, Callable):
             raise TypeError(f"Loss must be callable, got a {type(loss)} instead")
+        if len(inspect.signature(loss).parameters) != 1:
+            raise ValueError("The loss function must accept exactly one parameter")
         self.loss = loss
+
+        if weights_step_size is None:
+            raise TypeError("weights_step_size can not be None")
 
         if dimensions is None and init_states is None:
             raise ValueError("At least one of 'dimensions' and 'init_states' must be specified")
@@ -185,6 +191,20 @@ class Annealer:
         if self.temp_0 is None:
             self.temp_0 = self.get_temp_max()
 
+        if self.temp_step_size is None:
+            self.temp_step_size = 0.005 * (self.temp_0 - self.temp_min)
+
+        if self.init_states is None:
+            self.init_states = self.bounds[:, 0] + np.random.uniform(
+                size=(1, len(self.bounds))
+            ) * (self.bounds[:, 1] - self.bounds[:, 0])
+
+        if self.temp_step_size >= (self.temp_0 - self.temp_min):
+            raise ValueError(f"temperature step size ({self.temp_step_size}) is larger than the temperature range, going"
+                             f" from {self.temp_0} to {self.temp_min}")
+
+        self.iterations = int((self.temp_0 - self.temp_min) / self.temp_step_size)
+
     def info(self, msg: str):
         if self.verbose:
             logger.info(msg)
@@ -216,9 +236,9 @@ class Annealer:
         # acc_ratios = engine(func, Tmax_guesses)
         acc_ratios = [func(tmg) for tmg in tmax_guesses]
 
-        msg = "\n\t".join(*list(zip(tmax_guesses, np.array(list(acc_ratios)).T.ravel())))
-
-        self.info(f"  [TMAX] tmp vs acc_ratio : {msg}")
+        # msg = "\n\t".join(list(zip(tmax_guesses, np.array(list(acc_ratios)).T.ravel())))
+        #
+        # self.info(f"  [TMAX] tmp vs acc_ratio : {msg}")
 
         ibest = np.argmin(np.abs(np.array(acc_ratios) - 0.8))
 
@@ -233,14 +253,8 @@ class Annealer:
     
         b = self.temp_min * (1 - alpha)
     
-        print(" [SIM. ANN] Starting temp : ", self.temp_0)
-    
-        if self.init_states is None:
-            curr = self.bounds[:, 0] + np.random.uniform(
-                size=(1, len(self.bounds))
-            ) * (self.bounds[:, 1] - self.bounds[:, 0])
-        else:
-            curr = self.init_states.copy()
+        self.info(f" [SIM. ANN] Starting temp : {self.temp_0}")
+        curr = self.init_states.copy()
         curr_eval = self.loss(curr.T)
     
         history = []
