@@ -200,8 +200,8 @@ class Annealer:
             ) * (self.bounds[:, 1] - self.bounds[:, 0])
 
         if self.temp_step_size >= (self.temp_0 - self.temp_min):
-            raise ValueError(f"temperature step size ({self.temp_step_size}) is larger than the temperature range, going"
-                             f" from {self.temp_0} to {self.temp_min}")
+            raise ValueError(f"temperature step size ({self.temp_step_size}) is larger than the temperature range, "
+                             f"going from {self.temp_0} to {self.temp_min}")
 
         self.iterations = int((self.temp_0 - self.temp_min) / self.temp_step_size)
 
