@@ -38,6 +38,17 @@ def to_array(value: Union[int, float, list, np.ndarray, pd.Series, pd.DataFrame]
     return value.astype(float)
 
 
+class SamplePoint:
+    """ A class used by Annealer to keep track of its progress."""
+    def __init__(self, weights, iteration, acc_ratio, accepted, loss, temp):
+        self.weights = weights
+        self.iterations = iteration
+        self.acc_ratio = acc_ratio
+        self.accepted = accepted
+        self.loss = loss
+        self.temp = temp
+
+
 class Annealer:
 
     __AVAILABLE_CORES = os.cpu_count()
@@ -316,7 +327,7 @@ class Annealer:
         return t0
 
     # TODO (pcotte) : implement more cooling schedule
-    def fit(self, alpha=None, temp_min=None, temp_0=None, iterations=None) -> tuple:
+    def fit(self, alpha=None, temp_min=None, temp_0=None, iterations=None, acceptance_limit=None) -> tuple:
 
         if alpha is None:
             alpha = self.alpha
@@ -346,8 +357,8 @@ class Annealer:
 
         to_print = make_counter(self.iterations)
     
-        # run the algorithm
         points_accepted = 0
+        acc_ratio = None
         for i_ in range(self.iterations):
     
             # take a step
@@ -358,43 +369,46 @@ class Annealer:
             np.fill_diagonal(cov, self.weights_step_size)
             candidate = np.random.multivariate_normal(mean=curr.ravel(), cov=cov).reshape(curr.shape)
     
-            # evaluate candidate point
             candidate_eval = self.loss(candidate.T)
-    
-            # check for new best solution
-            if candidate_eval < curr_eval:
+
+            accepted = candidate_eval < curr_eval
+            if accepted:
                 points_accepted = points_accepted + 1
-                # store new best point
-                history.append([i_, candidate, np.NaN, candidate_eval, temp_0])
                 curr, curr_eval = candidate, candidate_eval
-                # report progress
                 self.debug(f"Accepted : {i_} f({curr}) = {curr_eval}")
-    
             else:
                 diff = candidate_eval - curr_eval
                 metropolis = np.exp(-diff / temp_0)
-                # check if we should keep the new point
-    
                 if np.random.uniform() < metropolis:
+                    accepted = True
                     points_accepted = points_accepted + 1
-                    # store the new current point
                     curr, curr_eval = candidate, candidate_eval
                     self.debug(f"Accepted : {i_} f({curr}) = {curr_eval}")
-    
-                    history.append([i_, candidate, np.NaN, candidate_eval, temp_0])
-    
                 else:
-                    # rejected point
                     self.debug(f"Rejected :{i_} f({candidate}) = {candidate_eval}")
-                    history.append([i_, np.NaN, candidate, candidate_eval, temp_0])
-    
+
+            acc_ratio = float(points_accepted) / float(i_ + 1)
+            history.append(
+                SamplePoint(
+                    weights=candidate,
+                    iteration=i_,
+                    accepted=accepted,
+                    loss=candidate_eval,
+                    temp=temp_0,
+                    acc_ratio=acc_ratio
+                )
+            )
+
             temp_0 = temp_0 * alpha + b
             if i_ in to_print and to_print[i_] is not None:
-                acc_ratio = float(points_accepted) / float(i_ + 1)
                 self.info(f"step {to_print[i_]}, Temperature : {temp_0} | acc. ratio so far : {acc_ratio}")
+            if acceptance_limit is not None and acc_ratio <= acceptance_limit:
+                self.info("Reached acceptance limit. Stopping.")
+                break
 
-        acc_ratio = float(points_accepted) / float(self.iterations)
-    
+        if acceptance_limit is not None and acc_ratio > acceptance_limit:
+            logger.warning("Did not reached acceptance limit even though reached the limit of iterations.")
+
         self.info(f"Final temp : {temp_0}")
         self.info(f"Acc. ratio : {acc_ratio}")
     

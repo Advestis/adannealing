@@ -372,14 +372,15 @@ def test_init(
         assert isinstance(ann.iterations, int)
 
 
-def test_fit():
+@pytest.mark.parametrize("acceptance", (None, 0.03))
+def test_fit(acceptance):
     ann = Annealer(
         loss=loss_func,
         weights_step_size=0.1,
         bounds=np.array([[0, 6]]),
         verbose=True
     )
-    w0, lmin, _, _ = ann.fit()
+    w0, lmin, _, _ = ann.fit(acceptance_limit=acceptance)
     assert np.isclose(w0, 4.0565, rtol=5e-2, atol=5e-2)
     assert np.isclose(lmin, -24.057, rtol=5e-2, atol=5e-2)
     print(w0, lmin)
