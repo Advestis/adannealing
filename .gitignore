@@ -190,3 +190,9 @@ jlog
 # But keep .gitignore :)
 !/.gitignore
 /dask-worker-space
+/5.html
+/5_philippe.html
+/code_matteo.py
+/code_philippe.py
+/logging.json
+/PRICEACTION_adj_eur_isin_bloom.parquet

@@ -151,6 +151,19 @@ def loss_func(w) -> float:
         (
             loss_func,
             np.array([1, 1]),
+            np.array([[10, -10]]),
+            None,
+            None,
+            0,
+            0.85,
+            1000,
+            None,
+            ValueError,
+            "Bounds are not valid",
+        ),
+        (
+            loss_func,
+            np.array([1, 1]),
             np.array([[-10, 10]]),
             None,
             None,
@@ -238,19 +251,6 @@ def loss_func(w) -> float:
             True,
             ValueError,
             "can not be NAN",
-        ),
-        (
-            loss_func,
-            1,
-            np.array([(-10, 10), (-10, 10)]),
-            np.array([0.2]),
-            20,
-            0,
-            0.85,
-            1000,
-            True,
-            ValueError,
-            "Dimension of 'bounds' is ",
         ),
         (
             loss_func,
@@ -360,8 +360,6 @@ def test_init(
         )
         assert isinstance(ann.weights_step_size, np.ndarray)
         assert ann.weights_step_size.dtype == float
-        assert isinstance(ann.bounds, np.ndarray)
-        assert ann.bounds.dtype == float
         assert isinstance(ann.init_states, np.ndarray)
         assert ann.init_states.dtype == float
         assert isinstance(ann.temp_0, float)
@@ -372,15 +370,23 @@ def test_init(
         assert isinstance(ann.iterations, int)
 
 
-@pytest.mark.parametrize("acceptance", (None, 0.03))
-def test_fit(acceptance):
+@pytest.mark.parametrize("init_states,bounds,acceptance", [
+    (None, ((0, 6),), None),
+    (None, ((0, 6),), 0.03),
+    (3.0, None, None),
+    (3.0, None, 0.03),
+    (3.0, ((0, 6),), None),
+    (3.0, ((0, 6),), 0.03),
+])
+def test_fit(init_states, bounds, acceptance):
     ann = Annealer(
         loss=loss_func,
         weights_step_size=0.1,
-        bounds=np.array([[0, 6]]),
+        init_states=init_states,
+        bounds=bounds,
         verbose=True
     )
     w0, lmin, _, _ = ann.fit(acceptance_limit=acceptance)
-    assert np.isclose(w0, 4.0565, rtol=5e-2, atol=5e-2)
-    assert np.isclose(lmin, -24.057, rtol=5e-2, atol=5e-2)
     print(w0, lmin)
+    assert np.isclose(w0, 4.0565, rtol=5e-2, atol=5e-2) or np.isclose(w0, 0.39904, rtol=5e-2, atol=5e-2)
+    assert np.isclose(lmin, -24.057, rtol=5e-2, atol=5e-2) or np.isclose(lmin, -1.7664, rtol=5e-2, atol=5e-2)

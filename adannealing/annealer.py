@@ -102,12 +102,13 @@ class Annealer:
             every weights. If a np.ndarray is given, it must have 'dimensions' entries, each entry will be the step size
             of one weight.
         bounds: np.ndarray
-            Optional. The limit of the weights. Must be a 2-D array of size ('dimensions', 2). If not specified, will
-            not use any bounds. Note that if bounds is not specified, then init_states must be, and vice-versa.
+            Optional. The limit of the weights, used to determine initial state.
+            Must be a 2-D array of size ('dimensions', 2). Note that if bounds are not specified,
+            then init_states must be, and vice-versa.
         init_states: np.ndarray
-            Optional. Initial values of the weights. Will use a random value if not specified. If specified, its size
-            defines the number of dimensions. Note that if init_states is not specified, then bounds must be,
-            and vice-versa.
+            Optional. Initial values of the weights. Will use random values using 'bounds' if not specified.
+            If specified, its size defines the number of dimensions. Note that if init_states are not specified,
+            then bounds must be, and vice-versa.
         temp_0: float
             Initial temperature. If not specified, will use get_t_max to get it.
         temp_min: float
@@ -141,14 +142,24 @@ class Annealer:
         if bounds is None and init_states is None:
             raise ValueError("At least one of 'init_states' and 'bounds' must be specified")
 
-        if bounds is not None:
+        if bounds is not None and init_states is not None:
+            logger.warning("Specified bounds and init_states. Bounds are then ignored.")
+
+        if init_states is None:
             bounds = to_array(bounds, "bounds")
             if bounds.ndim != 2 or bounds.shape[1] != 2:
                 raise ValueError(f"'bounds' dimension should be (any, 2), got {bounds.shape}")
             self.dimensions = bounds.shape[0]
-        self.bounds = bounds
-
-        if init_states is not None:
+            for coordinate in range(self.dimensions):
+                if bounds[coordinate][0] > bounds[coordinate][1]:
+                    raise ValueError("Bounds are not valid : some lower limits are greater then their upper limits:\n"
+                                     f"{bounds}")
+            self.init_states = (
+                    bounds[:, 0]
+                    + np.random.uniform(size=(1, len(bounds)))
+                    * (bounds[:, 1] - bounds[:, 0])
+            )
+        else:
             if isinstance(init_states, int):
                 init_states = float(init_states)
             if not isinstance(init_states, float):
@@ -161,18 +172,9 @@ class Annealer:
                 init_states = np.array([init_states])
             if init_states.ndim == 1:
                 init_states = init_states.reshape(1, init_states.shape[0])
-            if self.dimensions is None:
-                self.dimensions = init_states.shape[1]
-            elif self.dimensions != init_states.shape[1]:
-                raise ValueError(f"Dimension of 'bounds' is {self.dimensions} but 'init_states' has {init_states.shape}"
-                                 f" shape.")
+            self.dimensions = init_states.shape[1]
+
             self.init_states = init_states
-        else:
-            self.init_states = (
-                    self.bounds[:, 0]
-                    + np.random.uniform(size=(1, len(self.bounds)))
-                    * (self.bounds[:, 1] - self.bounds[:, 0])
-            )
 
         if isinstance(weights_step_size, int):
             weights_step_size = float(weights_step_size)
@@ -257,7 +259,6 @@ class Annealer:
         ann = Annealer(
                 loss=self.loss,
                 weights_step_size=self.weights_step_size,
-                bounds=self.bounds,
                 init_states=self.init_states,
                 temp_0=1,
                 temp_min=0,
