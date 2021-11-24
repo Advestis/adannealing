@@ -60,11 +60,11 @@ class Annealer:
         loss: Callable,
         weights_step_size: Union[float, np.ndarray],
         bounds: np.ndarray = None,
-        dimensions: int = None,
         init_states: np.ndarray = None,
-        temp_step_size: float = None,
         temp_0: float = None,
         temp_min: float = 0,
+        alpha: float = 0.85,
+        iterations: int = 1000,
         verbose: bool = False,
     ):
         """
@@ -79,37 +79,49 @@ class Annealer:
         bounds: np.ndarray
             Optional. The limit of the weights. Must be a 2-D array of size ('dimensions', 2). If not specified, will
             not use any bounds. Note that if bounds is not specified, then init_states must be, and vice-versa.
-        dimensions: int
-            The number of weights. Optional if 'init_states' is specified. One of 'dimensions' and 'init_states' MUST be
-            specified.
         init_states: np.ndarray
             Optional. Initial values of the weights. Will use a random value if not specified. If specified, its size
             defines the number of dimensions. Note that if init_states is not specified, then bounds must be,
             and vice-versa.
-        temp_step_size: float
-            Size of the variation of temperature to apply to each epoch. If not specified, will use 0.5% of the
-            difference between temp_0 and temp_min.
         temp_0: float
             Initial temperature. If not specified, will use get_t_max to get it.
         temp_min: float
             Final temperature. Default is 0
+        alpha: float
+            Leraning rate, default is 0.85
+        iterations: int
+            Number of iterations to make (default value = 1000)
         verbose: bool (default is False)
 
         The number of iterations will be equal to int((temp_0 - temp_min) / temp_step_size).
         If temp_step_size is not specified, then the number of iterations is equal to 200. (0.5% at each step).
         """
 
+        self.dimensions = None
         if not isinstance(loss, Callable):
-            raise TypeError(f"Loss must be callable, got a {type(loss)} instead")
+            raise TypeError(f"The loss function must be callable, got a {type(loss)} instead")
         if len(inspect.signature(loss).parameters) != 1:
             raise ValueError("The loss function must accept exactly one parameter")
         self.loss = loss
 
         if weights_step_size is None:
-            raise TypeError("weights_step_size can not be None")
+            raise TypeError("'weights_step_size' can not be None")
+        if alpha is None:
+            raise TypeError("'alpha' can not be None")
+        if temp_min is None:
+            raise TypeError("'temp_min' can not be None")
+        if iterations is None:
+            raise TypeError("'iterations' can not be None")
 
-        if dimensions is None and init_states is None:
-            raise ValueError("At least one of 'dimensions' and 'init_states' must be specified")
+        if bounds is None and init_states is None:
+            raise ValueError("At least one of 'init_states' and 'bounds' must be specified")
+
+        if bounds is not None:
+            bounds = to_array(bounds, "bounds")
+            if bounds.ndim != 2 or bounds.shape[1] != 2:
+                raise ValueError(f"'bounds' dimension should be (any, 2), got {bounds.shape}")
+            self.dimensions = bounds.shape[0]
+        self.bounds = bounds
 
         if init_states is not None:
             if isinstance(init_states, int):
@@ -120,18 +132,20 @@ class Annealer:
                     raise ValueError("'init_states' must be a 1-D numpy array")
             else:
                 if np.isnan(init_states):
-                    raise ValueError("init_states can not be NAN")
+                    raise ValueError("'init_states' can not be NAN")
                 init_states = np.array([init_states])
-
-        if dimensions is not None and init_states is not None:
-            if len(init_states) != dimensions:
-                raise ValueError(f"Specified {dimensions} dimensions but init_states has {len(init_states)} elements.")
-
-        if dimensions is not None:
-            self.dimensions = dimensions
+            if self.dimensions is None:
+                self.dimensions = len(init_states)
+            elif self.dimensions != len(init_states):
+                raise ValueError(f"Dimension of 'bounds' is {self.dimensions} but 'init_states' has {len(init_states)}"
+                                 f" elements.")
+            self.init_states = init_states
         else:
-            self.dimensions = len(init_states)
-        self.init_states = init_states
+            self.init_states = (
+                    self.bounds[:, 0]
+                    + np.random.uniform(size=(1, len(self.bounds)))
+                    * (self.bounds[:, 1] - self.bounds[:, 0])
+            ).flatten()
 
         if isinstance(weights_step_size, int):
             weights_step_size = float(weights_step_size)
@@ -147,42 +161,32 @@ class Annealer:
             weights_step_size = np.array([weights_step_size for _ in range(self.dimensions)])
         self.weights_step_size = weights_step_size
 
-        if bounds is not None:
-            bounds = to_array(bounds, "bounds")
-            if bounds.shape != (self.dimensions, 2):
-                raise ValueError(f"Shape of 'bounds' should be ({self.dimensions}, 2), but it is {bounds.shape}.")
-        self.bounds = bounds
-
-        if self.bounds is None and self.init_states is None:
-            raise ValueError("At least one of 'init_states' and 'bounds' must be specified")
-
-        if temp_step_size is not None:
-            if isinstance(temp_step_size, int):
-                temp_step_size = float(temp_step_size)
-            if not isinstance(temp_step_size, float):
-                raise TypeError(f"'temp_step_size' must be a float, got {type(temp_step_size)} instead.")
-            if np.isnan(temp_step_size):
-                raise ValueError("temp_step_size can ont be NAN")
-        self.temp_step_size = temp_step_size
-
         if temp_0 is not None:
             if isinstance(temp_0, int):
                 temp_0 = float(temp_0)
             if not isinstance(temp_0, float):
                 raise TypeError(f"'temp_0' must be a float, got {type(temp_0)} instead.")
             if np.isnan(temp_0):
-                raise ValueError("temp_0 can ont be NAN")
+                raise ValueError("'temp_0' can ont be NAN")
         self.temp_0 = temp_0
 
-        if temp_min is None:
-            raise TypeError("'temp_min' can not be None")
         if isinstance(temp_min, int):
             temp_min = float(temp_min)
         if not isinstance(temp_min, float):
             raise TypeError(f"'temp_min' must be a float, got {type(temp_min)} instead.")
         if np.isnan(temp_min):
-            raise ValueError("temp_min can ont be NAN")
+            raise ValueError("'temp_min' can ont be NAN")
         self.temp_min = temp_min
+
+        if isinstance(alpha, int):
+            alpha = float(alpha)
+        if not isinstance(alpha, float):
+            raise TypeError(f"'alpha' must be a float, got {type(alpha)} instead.")
+        if np.isnan(alpha):
+            raise ValueError("'alpha' can ont be NAN")
+        if not (0 < alpha <= 1):
+            raise ValueError("'alpha' must be between 0 excluded and 1.")
+        self.alpha = alpha
 
         if not isinstance(verbose, bool):
             raise TypeError(f"'verbose' must be a boolean, got {type(verbose)} instead.")
@@ -191,20 +195,9 @@ class Annealer:
         if self.temp_0 is None:
             self.temp_0 = self.get_temp_max()
 
-        if self.temp_step_size is None:
-            self.temp_step_size = 0.005 * (self.temp_0 - self.temp_min)
-
-        if self.init_states is None:
-            self.init_states = self.bounds[:, 0] + np.random.uniform(
-                size=(1, len(self.bounds))
-            ) * (self.bounds[:, 1] - self.bounds[:, 0])
-            self.init_states = self.init_states.flatten()
-
-        if self.temp_step_size >= (self.temp_0 - self.temp_min):
-            raise ValueError(f"temperature step size ({self.temp_step_size}) is larger than the temperature range, "
-                             f"going from {self.temp_0} to {self.temp_min}")
-
-        self.iterations = int((self.temp_0 - self.temp_min) / self.temp_step_size)
+        if not isinstance(iterations, int) or iterations <= 0:
+            raise ValueError("Number of iterations must be an integer greater than 0")
+        self.iterations = iterations
 
     def info(self, msg: str):
         if self.verbose:
@@ -217,30 +210,21 @@ class Annealer:
     # TODO docstring (mrizzato)
     def get_temp_max(self):
 
-        self.info("  [TMAX] Looking for starting temperature")
+        self.info("Looking for starting temperature")
 
         tmax_guesses = [10 ** (float(log10)) for log10 in np.linspace(-3, 2, 40)]
-
-        # engine = get_engine(kind="serial")
 
         def func(t):
             tmp_annealer = Annealer(
                 loss=self.loss,
                 weights_step_size=self.weights_step_size,
                 bounds=self.bounds,
-                dimensions=self.dimensions,
                 init_states=self.init_states,
                 temp_0=t,
             )
             return tmp_annealer.fit()[2]
 
-        # acc_ratios = engine(func, Tmax_guesses)
         acc_ratios = [func(tmg) for tmg in tmax_guesses]
-
-        # msg = "\n\t".join(list(zip(tmax_guesses, np.array(list(acc_ratios)).T.ravel())))
-        #
-        # self.info(f"  [TMAX] tmp vs acc_ratio : {msg}")
-
         ibest = np.argmin(np.abs(np.array(acc_ratios) - 0.8))
 
         try:
@@ -250,11 +234,29 @@ class Annealer:
 
         return tmax_guesses[ibest]
 
-    def fit(self, alpha=0.85, n_iterations=1000) -> tuple:
+    def fit(self, alpha=0.85, tmin=None, t0=None, iterations=None) -> tuple:
+
+        if alpha is None:
+            alpha = self.alpha
+        if tmin is None:
+            tmin = self.temp_min
+        if t0 is None:
+            t0 = self.temp_0
+        if iterations is None:
+            iterations = self.iterations
+
+        if alpha is None or not isinstance(alpha, float) or not (0 < alpha <= 1):
+            raise ValueError("'alpha' must be a float between 0 excluded and 1")
+        if tmin is None or tmin < 0:
+            raise ValueError("'tmin' must be a float greater than or equal to 0")
+        if t0 is None or t0 <= tmin:
+            raise ValueError("'t0' must be a float greater than tmin")
+        if iterations is None or not isinstance(iterations, int) or iterations <= 0:
+            raise ValueError("Number of iterations must be an integer greater than 0")
     
-        b = self.temp_min * (1 - alpha)
+        b = tmin * (1 - alpha)
     
-        self.info(f" [SIM. ANN] Starting temp : {self.temp_0}")
+        self.info(f"Starting temp : {t0}")
         curr = self.init_states.copy()
         curr_eval = self.loss(curr.T)
     
@@ -262,7 +264,7 @@ class Annealer:
     
         # run the algorithm
         points_accepted = 0
-        for i_ in range(n_iterations):
+        for i_ in range(self.iterations):
     
             # take a step
             unit_v = np.random.uniform(size=(1, self.dimensions))
@@ -279,37 +281,37 @@ class Annealer:
             if candidate_eval < curr_eval:
                 points_accepted = points_accepted + 1
                 # store new best point
-                history.append([i_, candidate, np.NaN, candidate_eval, self.temp_0])
+                history.append([i_, candidate, np.NaN, candidate_eval, t0])
                 curr, curr_eval = candidate, candidate_eval
                 # report progress
-                self.info(f" [SIM. ANN] Accepted : {i_} f({curr}) = {curr_eval}")
+                self.info(f"Accepted : {i_} f({curr}) = {curr_eval}")
     
             else:
                 diff = candidate_eval - curr_eval
-                metropolis = np.exp(-diff / self.temp_0)
+                metropolis = np.exp(-diff / t0)
                 # check if we should keep the new point
     
                 if np.random.uniform() < metropolis:
                     points_accepted = points_accepted + 1
                     # store the new current point
                     curr, curr_eval = candidate, candidate_eval
-                    self.info(f" [SIM. ANN] Accepted : {i_} f({curr}) = {curr_eval}")
+                    self.info(f"Accepted : {i_} f({curr}) = {curr_eval}")
     
-                    history.append([i_, candidate, np.NaN, candidate_eval, self.temp_0])
+                    history.append([i_, candidate, np.NaN, candidate_eval, t0])
     
                 else:
                     # rejected point
-                    self.info(f" [SIM. ANN] Rejected :{i_} f({candidate}) = {candidate_eval}")
-                    history.append([i_, np.NaN, candidate, candidate_eval, self.temp_0])
+                    self.info(f"Rejected :{i_} f({candidate}) = {candidate_eval}")
+                    history.append([i_, np.NaN, candidate, candidate_eval, t0])
     
-            self.temp_0 = self.temp_0 * alpha + b
+            t0 = t0 * alpha + b
             if i_ > 1:
                 acc_ratio = float(points_accepted) / float(i_ + 1)
-                self.info(f" [SIM. ANN] Temperature : {self.temp_0} | acc. ratio so far : {acc_ratio}")
+                self.info(f"Temperature : {t0} | acc. ratio so far : {acc_ratio}")
 
-        acc_ratio = float(points_accepted) / float(n_iterations)
+        acc_ratio = float(points_accepted) / float(self.iterations)
     
-        print(" [SIM. ANN] Final temp : ", self.temp_0)
-        print(" [SIM. ANN] Acc. ratio : ", acc_ratio)
+        self.info(f"Final temp : {t0}")
+        self.info(f"Acc. ratio : {acc_ratio}")
     
         return curr, curr_eval, acc_ratio, history

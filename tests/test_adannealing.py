@@ -15,8 +15,17 @@ def loss_func(w) -> float:
 
 # noinspection PyTypeChecker
 @pytest.mark.parametrize(
-    "loss,weights_step_size,bounds,dimensions,init_states,temp_step_size,temp_0,temp_min,verbose,"
-    "expected_error_type,expected_error_message,iterations",
+    "loss,"
+    "weights_step_size,"
+    "bounds,"
+    "init_states,"
+    "temp_0,"
+    "temp_min,"
+    "alpha,"
+    "iterations,"
+    "verbose,"
+    "expected_error_type,"
+    "expected_error_message",
     [
         (
             None,
@@ -29,8 +38,7 @@ def loss_func(w) -> float:
             None,
             None,
             TypeError,
-            "Loss must be callable",
-            None
+            "The loss function must be callable",
         ),
         (
             wrong_loss,
@@ -44,7 +52,6 @@ def loss_func(w) -> float:
             None,
             ValueError,
             "The loss function must accept exactly one parameter",
-            None
         ),
         (
             loss_func,
@@ -57,8 +64,7 @@ def loss_func(w) -> float:
             None,
             None,
             TypeError,
-            "weights_step_size can not be None",
-            None
+            "'weights_step_size' can not be None",
         ),
         (
             loss_func,
@@ -70,263 +76,257 @@ def loss_func(w) -> float:
             None,
             None,
             None,
-            ValueError,
-            "At least one of 'dimensions' and 'init_states' must be specified",
-            None
+            TypeError,
+            "'alpha' can not be None",
         ),
         (
             loss_func,
             np.array([1]),
             None,
-            2,
             None,
             None,
             None,
+            0.85,
             None,
             None,
-            ValueError,
-            "Shape of 'weights_step_size' should be",
-            None
+            TypeError,
+            "'temp_min' can not be None",
         ),
         (
             loss_func,
-            np.array([1, 1]),
-            None,
-            2,
+            np.array([1]),
             None,
             None,
             None,
+            0,
+            0.85,
             None,
             None,
+            TypeError,
+            "'iterations' can not be None",
+        ),
+        (
+            loss_func,
+            np.array([1]),
+            None,
+            None,
+            None,
+            0,
+            0.85,
+            1000,
+            True,
             ValueError,
-            "At least one of",
-            None
+            "At least one of 'init_states' and 'bounds' must be specified",
         ),
         (
             loss_func,
             np.array([1, 1]),
             np.array([-10, 10]),
-            2,
             None,
             None,
-            None,
-            None,
+            0,
+            0.85,
+            1000,
             None,
             ValueError,
-            "Shape of 'bounds' should be",
-            None
+            "'bounds' dimension should be (any, 2), got ",
         ),
         (
             loss_func,
             np.array([1, 1]),
-            np.array([(-10, 10), (-10, 10)]),
-            2,
+            np.array([[-10, 10, 0]]),
             None,
             None,
+            0,
+            0.85,
+            1000,
             None,
-            None,
-            None,
-            TypeError,
-            "'temp_min' can not be None",
-            None
+            ValueError,
+            "'bounds' dimension should be (any, 2), got ",
         ),
         (
             loss_func,
-            np.array([1]),
-            np.array([(-10, 10), (-10, 10)]),
-            2,
+            np.array([1, 1]),
+            np.array([[-10, 10]]),
             None,
             None,
-            None,
-            None,
+            0,
+            0.85,
+            1000,
             None,
             ValueError,
-            "Shape of 'weights_step_size'",
-            None
+            "Shape of 'weights_step_size' should be (1,)",
         ),
         (
             loss_func,
             1,
             np.array([(-10, 10), (-10, 10)]),
-            2,
-            None,
             None,
             20,
             0,
+            0.85,
+            1000,
             True,
             None,
             "",
-            None
         ),
         (
             loss_func,
             (1, 1),
             np.array([(-10, 10), (-10, 10)]),
-            2,
-            None,
             None,
             20,
             0,
+            0.85,
+            1000,
             True,
             None,
             "",
-            None
         ),
         (
             loss_func,
             np.array((1, 1)),
             np.array([(-10, 10), (-10, 10)]),
-            2,
-            None,
             None,
             20,
             0,
+            0.85,
+            1000,
             True,
             None,
             "",
-            None
         ),
         (
             loss_func,
             [1, 1],
             np.array([(-10, 10), (-10, 10)]),
-            2,
-            None,
             None,
             20,
             0,
+            0.85,
+            1000,
             True,
             None,
             "",
-            None
         ),
         (
             loss_func,
             [1, np.nan],
             np.array([(-10, 10), (-10, 10)]),
-            2,
-            None,
             None,
             20,
             0,
+            0.85,
+            1000,
             True,
             ValueError,
             "can not contain NANs",
-            None
         ),
         (
             loss_func,
             np.nan,
             np.array([(-10, 10), (-10, 10)]),
-            2,
-            None,
             None,
             20,
             0,
+            0.85,
+            1000,
             True,
             ValueError,
             "can not be NAN",
-            None
         ),
         (
             loss_func,
-            [1, 1],
+            1,
             np.array([(-10, 10), (-10, 10)]),
-            2,
-            2,
-            None,
+            np.array([0.2]),
             20,
             0,
+            0.85,
+            1000,
             True,
             ValueError,
-            "dimensions but init_states has",
-            None
+            "Dimension of 'bounds' is ",
         ),
         (
             loss_func,
-            [1, 1],
+            1,
             np.array([(-10, 10), (-10, 10)]),
-            2,
+            np.nan,
+            20,
+            0,
+            0.85,
+            1000,
+            True,
+            ValueError,
+            "'init_states' can not be NAN",
+        ),
+        (
+            loss_func,
+            1,
+            np.array([(-10, 10), (-10, 10)]),
+            np.array([(-10, 10), (-10, 10)]),
+            20,
+            0,
+            0.85,
+            1000,
+            True,
+            ValueError,
+            "'init_states' must be a 1-D numpy array",
+        ),
+        (
+            loss_func,
+            1,
+            np.array([(-10, 10), (-10, 10)]),
             [0, 0],
-            None,
             20,
             0,
+            0.85,
+            1000,
             True,
             None,
             "",
-            None
         ),
         (
             loss_func,
-            [1, 1],
+            1,
             np.array([(-10, 10), (-10, 10)]),
-            2,
             (0, 0),
-            None,
             20,
             0,
+            0.85,
+            1000,
             True,
             None,
             "",
-            None
         ),
         (
             loss_func,
-            [1, 1],
+            1,
             np.array([(-10, 10), (-10, 10)]),
-            2,
             np.array([0, 0]),
-            None,
             20,
             0,
+            0.85,
+            1000,
             True,
             None,
             "",
-            None
         ),
-        (
-            loss_func,
-            [1, 1],
-            np.array([(-10, 10), (-10, 10)]),
-            2,
-            np.array([0, 0]),
-            200,
-            20,
-            0,
-            True,
-            ValueError,
-            "larger than ",
-            None
-        ),
-        (
-            loss_func,
-            [1, 1],
-            np.array([(-10, 10), (-10, 10)]),
-            2,
-            np.array([0, 0]),
-            20,
-            200,
-            0,
-            True,
-            None,
-            "",
-            10
-        )
      ]
 )
 def test_init(
         loss,
         weights_step_size,
         bounds,
-        dimensions,
         init_states,
-        temp_step_size,
         temp_0,
         temp_min,
+        alpha,
+        iterations,
         verbose,
         expected_error_type,
         expected_error_message,
-        iterations
 ):
     if expected_error_type is not None:
         with pytest.raises(expected_error_type) as e:
@@ -334,12 +334,12 @@ def test_init(
                 loss,
                 weights_step_size,
                 bounds,
-                dimensions,
                 init_states,
-                temp_step_size,
                 temp_0,
                 temp_min,
-                verbose
+                alpha,
+                iterations,
+                verbose,
             )
         assert expected_error_message in str(e.value)
     else:
@@ -347,12 +347,12 @@ def test_init(
             loss,
             weights_step_size,
             bounds,
-            dimensions,
             init_states,
-            temp_step_size,
             temp_0,
             temp_min,
-            verbose
+            alpha,
+            iterations,
+            verbose,
         )
         assert isinstance(ann.weights_step_size, np.ndarray)
         assert ann.weights_step_size.dtype == float
@@ -360,22 +360,20 @@ def test_init(
         assert ann.bounds.dtype == float
         assert isinstance(ann.init_states, np.ndarray)
         assert ann.init_states.dtype == float
-        assert isinstance(ann.temp_step_size, float)
         assert isinstance(ann.temp_0, float)
         assert isinstance(ann.temp_min, float)
+        assert isinstance(ann.alpha, float)
         assert isinstance(ann.verbose, bool)
         assert isinstance(ann.dimensions, int)
         assert isinstance(ann.iterations, int)
-        if iterations is not None:
-            assert ann.iterations == iterations
 
 
-def test_fit():
-    ann = Annealer(
-        loss=loss_func,
-        weights_step_size=0.1,
-        bounds=np.array([[0, 6]]),
-        init_states=np.array([0]),
-        verbose=True
-    )
-    ann.fit()
+# def test_fit():
+#     ann = Annealer(
+#         loss=loss_func,
+#         weights_step_size=0.1,
+#         bounds=np.array([[0, 6]]),
+#         init_states=np.array([0]),
+#         verbose=True
+#     )
+#     ann.fit()
