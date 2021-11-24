@@ -38,15 +38,79 @@ def to_array(value: Union[int, float, list, np.ndarray, pd.Series, pd.DataFrame]
     return value.astype(float)
 
 
+class Sampler:
+    def __init__(self):
+        self.points = []
+        self._data = pd.DataFrame()
+
+    def append(self, value):
+        self.points.append(value)
+
+    def __len__(self):
+        return len(self.points)
+
+    def _process(self):
+        self._data = pd.DataFrame(
+            [[p.weights, p.iteration, p.acc_ratio, p.accepted, p.loss, p.temp] for p in self.points],
+            columns=["weights", "iteration", "acc_ratio", "accepted", "loss", "temp"]
+        )
+
+    @property
+    def weights(self):
+        if self._data.empty or len(self._data.index) != len(self):
+            self._process()
+        return self._data.loc[:, "weights"]
+
+    @property
+    def iteration(self):
+        if self._data.empty or len(self._data.index) != len(self):
+            self._process()
+        return self._data.loc[:, "iteration"]
+
+    @property
+    def acc_ratio(self):
+        if self._data.empty or len(self._data.index) != len(self):
+            self._process()
+        return self._data.loc[:, "acc_ratio"]
+
+    @property
+    def accepted(self):
+        if self._data.empty or len(self._data.index) != len(self):
+            self._process()
+        return self._data.loc[:, "accepted"]
+
+    @property
+    def loss(self):
+        if self._data.empty or len(self._data.index) != len(self):
+            self._process()
+        return self._data.loc[:, "loss"]
+
+    @property
+    def temp(self):
+        if self._data.empty or len(self._data.index) != len(self):
+            self._process()
+        return self._data.loc[:, "temp"]
+
+    @property
+    def data(self):
+        if self._data.empty or len(self._data.index) != len(self):
+            self._process()
+        return self._data
+
+
 class SamplePoint:
     """ A class used by Annealer to keep track of its progress."""
-    def __init__(self, weights, iteration, acc_ratio, accepted, loss, temp):
+    def __init__(self, weights, iteration, acc_ratio, accepted, loss, temp, sampler: Union[None, Sampler] = None):
+        if sampler is not None and not isinstance(sampler, Sampler):
+            raise TypeError(f"Sampler must be of type 'Sampler', got {type(sampler)}")
         self.weights = weights
-        self.iterations = iteration
+        self.iteration = iteration
         self.acc_ratio = acc_ratio
         self.accepted = accepted
         self.loss = loss
         self.temp = temp
+        if sampler is not None:
+            sampler.append(self)
 
 
 class Annealer:
@@ -256,6 +320,7 @@ class Annealer:
         t2 = 10
         t1 = t1_i
         acc_ratio_2, t0, acc_ratio_0 = None, None, None
+        ar_limit_mean = (ar_limit_up + ar_limit_low) / 2.
         ann = Annealer(
                 loss=self.loss,
                 weights_step_size=self.weights_step_size,
@@ -313,7 +378,7 @@ class Annealer:
                                "acceptance ratio should be strictly increasing with temperature")
                     attempts += 1
                     continue
-                t2 = max([0, (ar_limit_up - acc_ratio_1) / slope - t1])
+                t2 = max([0, (ar_limit_mean - acc_ratio_1) / slope - t1])
                 if t2 <= 0:
                     t2 = 2e-16
                 attempts += 1
@@ -354,7 +419,7 @@ class Annealer:
         curr = self.init_states.copy()
         curr_eval = self.loss(curr.T)
     
-        history = []
+        history = Sampler()
 
         to_print = make_counter(self.iterations)
     
@@ -389,15 +454,14 @@ class Annealer:
                     self.debug(f"Rejected :{i_} f({candidate}) = {candidate_eval}")
 
             acc_ratio = float(points_accepted) / float(i_ + 1)
-            history.append(
-                SamplePoint(
-                    weights=candidate,
-                    iteration=i_,
-                    accepted=accepted,
-                    loss=candidate_eval,
-                    temp=temp_0,
-                    acc_ratio=acc_ratio
-                )
+            SamplePoint(
+                weights=candidate[0],
+                iteration=i_,
+                accepted=accepted,
+                loss=candidate_eval,
+                temp=temp_0,
+                acc_ratio=acc_ratio,
+                sampler=history
             )
 
             temp_0 = temp_0 * alpha + b
