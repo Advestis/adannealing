@@ -223,61 +223,122 @@ class Annealer:
         if self.verbose:
             logger.debug(msg)
 
-    def get_temp_max(self):
+    def get_temp_max(self, ar_limit_low=0.79, ar_limit_up=0.81, max_attempt=100):
 
-        self.info("Looking for starting temperature")
+        self.info(f"Looking for starting temperature...")
 
-        tmax_guesses = [10 ** (float(log10)) for log10 in np.linspace(-3, 2, 40)]
+        if ar_limit_up < ar_limit_low:
+            raise ValueError("Acceptance ratio limit up must be greater than Acceptance ratio limit low")
+        if not isinstance(max_attempt, int):
+            raise TypeError("'max_attempts' must be an integer")
+        if max_attempt <= 0:
+            raise ValueError("'max_attempts' must be greater than 0")
+        
+        if ar_limit_up >= 0.95:
+            raise ValueError("Acceptance ratio limit up can not be equal to or greater than 0.95")
 
-        def func(t):
-            tmp_annealer = Annealer(
+        acc_ratio = 0
+        attempts = 0
+        t1_i = 1e-5
+        t2 = 10
+        t1 = t1_i
+        acc_ratio_2, t0, acc_ratio_0 = None, None, None
+        ann = Annealer(
                 loss=self.loss,
                 weights_step_size=self.weights_step_size,
                 bounds=self.bounds,
                 init_states=self.init_states,
-                temp_0=t,
+                temp_0=1,
+                temp_min=0,
                 alpha=1,
-                iterations=10000,
-                verbose=True
+                iterations=100,
+                verbose=False
             )
-            return tmp_annealer.fit()[2]
+        acc_ratio_1 = ann.fit(temp_0=t1, iterations=10000)[2]
 
-        acc_ratios = []
-        for tmg in tmax_guesses:
-            acc_ratios.append(func(tmg))
-            if acc_ratios[-1] > 0.8:
-                break
-        ibest = np.argmin(np.abs(np.array(acc_ratios) - 0.8))
+        if ar_limit_low < acc_ratio_1 < ar_limit_up:
+            # Lucky strike : t0 is already good !
+            acc_ratio_0 = acc_ratio_1
+            t0 = t1
+        else:
+            # Unlucky strike : t1 gives an acc_ratio greater than the upper limit.
+            while acc_ratio_1 > ar_limit_up:
+                if attempts > max_attempt:
+                    raise ValueError(f"Could not find a temperature giving an acceptance ratio between {ar_limit_low} "
+                                     f"and {ar_limit_up} in less than {max_attempt} attempts")
+                t1 = t1 / 10
+                acc_ratio_1 = ann.fit(temp_0=t1, iterations=10000)[2]
+                attempts += 1
 
-        if not np.isclose(acc_ratios[ibest], 0.8, rtol=5e-2, atol=5e-02):
-            raise RuntimeError("No temperature found with an acceptance ratio close to 0.8+/- 5%.")
+            attempts = 0
+            while not ar_limit_low < acc_ratio < ar_limit_up:
+                if attempts > max_attempt:
+                    raise ValueError(f"Could not find a temperature giving an acceptance ratio between {ar_limit_low} "
+                                     f"and {ar_limit_up} in less than {max_attempt} attempts")
+                acc_ratio_2 = ann.fit(temp_0=t2)[2]
+                self.info(f"Attempt {attempts}")
+                self.info(f"t1: {t1}, Acc. ratio : {acc_ratio_1} (fixed)")
+                self.info(f"t2: {t2}, Acc. ratio : {acc_ratio_2}")
 
-        return tmax_guesses[ibest]
+                if ar_limit_low < acc_ratio_2 < ar_limit_up:
+                    acc_ratio_0 = acc_ratio_2
+                    t0 = t2
+                    break
+
+                if acc_ratio_2 > 0.95:
+                    t2 = (t2 - t1) / 10
+                    attempts += 1
+                    continue
+
+                slope = (acc_ratio_2 - acc_ratio_1) / (t2 - t1)
+                if slope < 0:
+                    self.debug("Got a negative slope when trying to find starting temperature. Impossible : "
+                               "acceptance ratio should be strictly increasing with temperature")
+                    attempts += 1
+                    continue
+                if slope == 0:
+                    self.debug("Got a null slope when trying to find starting temperature. Impossible : "
+                               "acceptance ratio should be strictly increasing with temperature")
+                    attempts += 1
+                    continue
+                t2 = max([0, (ar_limit_up - acc_ratio_1) / slope - t1])
+                if t2 <= 0:
+                    t2 = 2e-16
+                attempts += 1
+
+        if t0 is None:
+            t0 = t2
+            acc_ratio_0 = acc_ratio_2
+            logger.warning(f"Could not find a suitable starting temperature. Will try annealing anyway with t0={t0} "
+                           f"(acc. ratio = {acc_ratio_0})")
+        else:
+            self.info(f"Found starting temperature t0 = {t0} (acc. ratio = {acc_ratio_0})")
+        return t0
 
     # TODO (pcotte) : implement more cooling schedule
-    def fit(self, alpha=None, tmin=None, t0=None, iterations=None) -> tuple:
+    def fit(self, alpha=None, temp_min=None, temp_0=None, iterations=None) -> tuple:
 
         if alpha is None:
             alpha = self.alpha
-        if tmin is None:
-            tmin = self.temp_min
-        if t0 is None:
-            t0 = self.temp_0
+        if temp_min is None:
+            temp_min = self.temp_min
+        if temp_0 is None:
+            temp_0 = self.temp_0
         if iterations is None:
             iterations = self.iterations
 
         if alpha is None or not isinstance(alpha, float) or not (0 < alpha <= 1):
             raise ValueError("'alpha' must be a float between 0 excluded and 1")
-        if tmin is None or tmin < 0:
+        if temp_min is None or temp_min < 0:
             raise ValueError("'tmin' must be a float greater than or equal to 0")
-        if t0 is None or t0 <= tmin:
-            raise ValueError("'t0' must be a float greater than tmin")
+        if temp_0 is None or temp_0 <= temp_min:
+            raise ValueError(f"'t0' must be a float greater than tmin, got {temp_0} <= {temp_min}")
         if iterations is None or not isinstance(iterations, int) or iterations <= 0:
             raise ValueError("Number of iterations must be an integer greater than 0")
     
-        b = tmin * (1 - alpha)
+        b = temp_min * (1 - alpha)
     
-        self.info(f"Starting temp : {t0}")
+        self.info(f"Starting temp : {temp_0}")
         curr = self.init_states.copy()
         curr_eval = self.loss(curr.T)
     
@@ -304,14 +365,14 @@ class Annealer:
             if candidate_eval < curr_eval:
                 points_accepted = points_accepted + 1
                 # store new best point
-                history.append([i_, candidate, np.NaN, candidate_eval, t0])
+                history.append([i_, candidate, np.NaN, candidate_eval, temp_0])
                 curr, curr_eval = candidate, candidate_eval
                 # report progress
                 self.debug(f"Accepted : {i_} f({curr}) = {curr_eval}")
     
             else:
                 diff = candidate_eval - curr_eval
-                metropolis = np.exp(-diff / t0)
+                metropolis = np.exp(-diff / temp_0)
                 # check if we should keep the new point
     
                 if np.random.uniform() < metropolis:
@@ -320,21 +381,21 @@ class Annealer:
                     curr, curr_eval = candidate, candidate_eval
                     self.debug(f"Accepted : {i_} f({curr}) = {curr_eval}")
     
-                    history.append([i_, candidate, np.NaN, candidate_eval, t0])
+                    history.append([i_, candidate, np.NaN, candidate_eval, temp_0])
     
                 else:
                     # rejected point
                     self.debug(f"Rejected :{i_} f({candidate}) = {candidate_eval}")
-                    history.append([i_, np.NaN, candidate, candidate_eval, t0])
+                    history.append([i_, np.NaN, candidate, candidate_eval, temp_0])
     
-            t0 = t0 * alpha + b
+            temp_0 = temp_0 * alpha + b
             if i_ in to_print and to_print[i_] is not None:
                 acc_ratio = float(points_accepted) / float(i_ + 1)
-                self.info(f"step {to_print[i_]}, Temperature : {t0} | acc. ratio so far : {acc_ratio}")
+                self.info(f"step {to_print[i_]}, Temperature : {temp_0} | acc. ratio so far : {acc_ratio}")
 
         acc_ratio = float(points_accepted) / float(self.iterations)
     
-        self.info(f"Final temp : {t0}")
+        self.info(f"Final temp : {temp_0}")
         self.info(f"Acc. ratio : {acc_ratio}")
     
         return curr, curr_eval, acc_ratio, history
