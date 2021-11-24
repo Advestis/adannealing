@@ -9,6 +9,20 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
+def make_counter(iterable):
+    if isinstance(iterable, int):
+        nitems = iterable
+    else:
+        nitems = len(iterable)
+    dt = int(nitems / 10)
+    if nitems < 10:
+        dt = 1
+    indexes_to_print = {
+        i: f"{i}/{nitems}, {round(100 * i / nitems, 2)}%" for i in list(range(dt, nitems, dt))
+    }
+    return indexes_to_print
+
+
 def to_array(value: Union[int, float, list, np.ndarray, pd.Series, pd.DataFrame], name: str) -> np.ndarray:
     if not isinstance(value, np.ndarray):
         if isinstance(value, (float, int)):
@@ -128,24 +142,26 @@ class Annealer:
                 init_states = float(init_states)
             if not isinstance(init_states, float):
                 init_states = to_array(init_states, "init_states")
-                if init_states.ndim != 1:
-                    raise ValueError("'init_states' must be a 1-D numpy array")
+                if init_states.ndim != 1 and not (init_states.ndim == 2 and init_states.shape[0] == 1):
+                    raise ValueError("'init_states' must be a 1-D numpy array or a line vector")
             else:
                 if np.isnan(init_states):
                     raise ValueError("'init_states' can not be NAN")
                 init_states = np.array([init_states])
+            if init_states.ndim == 1:
+                init_states = init_states.reshape(1, init_states.shape[0])
             if self.dimensions is None:
-                self.dimensions = len(init_states)
-            elif self.dimensions != len(init_states):
-                raise ValueError(f"Dimension of 'bounds' is {self.dimensions} but 'init_states' has {len(init_states)}"
-                                 f" elements.")
+                self.dimensions = init_states.shape[1]
+            elif self.dimensions != init_states.shape[1]:
+                raise ValueError(f"Dimension of 'bounds' is {self.dimensions} but 'init_states' has {init_states.shape}"
+                                 f" shape.")
             self.init_states = init_states
         else:
             self.init_states = (
                     self.bounds[:, 0]
                     + np.random.uniform(size=(1, len(self.bounds)))
                     * (self.bounds[:, 1] - self.bounds[:, 0])
-            ).flatten()
+            )
 
         if isinstance(weights_step_size, int):
             weights_step_size = float(weights_step_size)
@@ -207,7 +223,6 @@ class Annealer:
         if self.verbose:
             logger.debug(msg)
 
-    # TODO docstring (mrizzato)
     def get_temp_max(self):
 
         self.info("Looking for starting temperature")
@@ -221,20 +236,26 @@ class Annealer:
                 bounds=self.bounds,
                 init_states=self.init_states,
                 temp_0=t,
+                alpha=1,
+                iterations=10000,
+                verbose=True
             )
             return tmp_annealer.fit()[2]
 
-        acc_ratios = [func(tmg) for tmg in tmax_guesses]
+        acc_ratios = []
+        for tmg in tmax_guesses:
+            acc_ratios.append(func(tmg))
+            if acc_ratios[-1] > 0.8:
+                break
         ibest = np.argmin(np.abs(np.array(acc_ratios) - 0.8))
 
-        try:
-            np.isclose(acc_ratios[ibest][0], 0.8, rtol=1e-2, atol=1e-02)
-        except Exception:
-            raise RuntimeError("No temperature found with an acceptance ratio close to 0.8.")
+        if not np.isclose(acc_ratios[ibest], 0.8, rtol=5e-2, atol=5e-02):
+            raise RuntimeError("No temperature found with an acceptance ratio close to 0.8+/- 5%.")
 
         return tmax_guesses[ibest]
 
-    def fit(self, alpha=0.85, tmin=None, t0=None, iterations=None) -> tuple:
+    # TODO (pcotte) : implement more cooling schedule
+    def fit(self, alpha=None, tmin=None, t0=None, iterations=None) -> tuple:
 
         if alpha is None:
             alpha = self.alpha
@@ -261,6 +282,8 @@ class Annealer:
         curr_eval = self.loss(curr.T)
     
         history = []
+
+        to_print = make_counter(self.iterations)
     
         # run the algorithm
         points_accepted = 0
@@ -270,9 +293,9 @@ class Annealer:
             unit_v = np.random.uniform(size=(1, self.dimensions))
             unit_v = unit_v / np.linalg.norm(unit_v)
             assert np.isclose(np.linalg.norm(unit_v), 1.0)
-            cov = np.zeros((curr.shape[0], curr.shape[0]), float)
+            cov = np.zeros((curr.shape[1], curr.shape[1]), float)
             np.fill_diagonal(cov, self.weights_step_size)
-            candidate = np.random.multivariate_normal(mean=curr, cov=cov).reshape(curr.shape)
+            candidate = np.random.multivariate_normal(mean=curr.ravel(), cov=cov).reshape(curr.shape)
     
             # evaluate candidate point
             candidate_eval = self.loss(candidate.T)
@@ -284,7 +307,7 @@ class Annealer:
                 history.append([i_, candidate, np.NaN, candidate_eval, t0])
                 curr, curr_eval = candidate, candidate_eval
                 # report progress
-                self.info(f"Accepted : {i_} f({curr}) = {curr_eval}")
+                self.debug(f"Accepted : {i_} f({curr}) = {curr_eval}")
     
             else:
                 diff = candidate_eval - curr_eval
@@ -295,19 +318,19 @@ class Annealer:
                     points_accepted = points_accepted + 1
                     # store the new current point
                     curr, curr_eval = candidate, candidate_eval
-                    self.info(f"Accepted : {i_} f({curr}) = {curr_eval}")
+                    self.debug(f"Accepted : {i_} f({curr}) = {curr_eval}")
     
                     history.append([i_, candidate, np.NaN, candidate_eval, t0])
     
                 else:
                     # rejected point
-                    self.info(f"Rejected :{i_} f({candidate}) = {candidate_eval}")
+                    self.debug(f"Rejected :{i_} f({candidate}) = {candidate_eval}")
                     history.append([i_, np.NaN, candidate, candidate_eval, t0])
     
             t0 = t0 * alpha + b
-            if i_ > 1:
+            if i_ in to_print and to_print[i_] is not None:
                 acc_ratio = float(points_accepted) / float(i_ + 1)
-                self.info(f"Temperature : {t0} | acc. ratio so far : {acc_ratio}")
+                self.info(f"step {to_print[i_]}, Temperature : {t0} | acc. ratio so far : {acc_ratio}")
 
         acc_ratio = float(points_accepted) / float(self.iterations)
     

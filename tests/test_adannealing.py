@@ -1,4 +1,8 @@
 import pytest
+import adutils
+adutils.init("logger")
+from adutils import setup_logger
+setup_logger()
 import numpy as np
 
 from adannealing import Annealer
@@ -368,12 +372,14 @@ def test_init(
         assert isinstance(ann.iterations, int)
 
 
-# def test_fit():
-#     ann = Annealer(
-#         loss=loss_func,
-#         weights_step_size=0.1,
-#         bounds=np.array([[0, 6]]),
-#         init_states=np.array([0]),
-#         verbose=True
-#     )
-#     ann.fit()
+def test_fit():
+    ann = Annealer(
+        loss=loss_func,
+        weights_step_size=0.1,
+        bounds=np.array([[0, 6]]),
+        verbose=True
+    )
+    w0, lmin, _, _ = ann.fit()
+    assert np.isclose(w0, 4.0565, rtol=5e-2, atol=5e-2)
+    assert np.isclose(lmin, -24.057, rtol=5e-2, atol=5e-2)
+    print(w0, lmin)
