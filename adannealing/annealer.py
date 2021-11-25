@@ -415,7 +415,24 @@ class Annealer:
             if i_ in to_print and to_print[i_] is not None:
                 self.info(f"step {to_print[i_]}, Temperature : {temp_0} | acc. ratio so far : {acc_ratio}")
 
-            # Checking stopping criterion
+            """
+            Stopping criterion : 
+            
+            ratio = abs(loss(i) - loss(i-1) - 1) must be lower than stopping_limit.
+            
+            ONLY CONSIDER LOSSES OF ACCEPTED POINTS.
+            
+            If so, remember loss(i-1) as loss_for_finishing and let the program run for n_finishing_max more iterations.
+            At each of those iterations, check that ratio < stopping_limit.
+            
+            If not, forget loss_for_finishing, forget how many iterations we did since ratio was first lower than 
+            stopping_limit, and continue decreasing temperature.
+            
+            If it is, continue until n_finishing_max is reached or until ratio >= stopping_limit.
+            
+            If n_finishing_max is reached, stop the algorithm. The returned weights are those matching the minimal value
+            of the loss among the n_finishing_max previous losses.
+            """
             if stopping_limit is not None and prev_loss is not None:
                 if not finishing:
                     loss_for_finishing = prev_loss
