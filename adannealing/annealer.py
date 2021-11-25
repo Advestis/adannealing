@@ -1,6 +1,5 @@
 import numpy as np
 from typing import Callable, Union
-import os
 import logging
 import inspect
 from pathlib import Path
@@ -41,34 +40,19 @@ def to_array(value: Union[int, float, list, np.ndarray, pd.Series, pd.DataFrame]
 
 class Annealer:
 
-    __AVAILABLE_CORES = os.cpu_count()
-    __LIMIT_CORES = __AVAILABLE_CORES - 1
-    __PARALLEL = True
-    if __LIMIT_CORES == 0:
-        __PARALLEL = False
+    __ENGINE = None
 
     @classmethod
-    def set_parallel(cls, value: bool):
-        if not isinstance(value, bool):
-            raise ValueError(f"Argument of set_parellel should be a boolean, got {type(value)} instead")
-        if value is True and cls.__LIMIT_CORES == 0:
-            logger.warning("Can not use parallel annealing : only one core is available on this machine.")
-            cls.__PARALLEL = False
-            return
-        cls.__PARALLEL = value
+    def set_parallel_engine(cls, engine):
+        cls.__ENGINE = engine
 
     @classmethod
-    def limit_cores(cls, value: int):
-        if not isinstance(value, int):
-            raise ValueError(f"Number of cores should be an integer, got {type(value)} instead")
-        if value >= cls.__AVAILABLE_CORES:
-            logger.warning(
-                f"Number of core used for parallel annealing can not be geater than "
-                f"{cls.__AVAILABLE_CORES - 1} on this machine. Using this value as a limit."
-            )
-            cls.__LIMIT_CORES = cls.__AVAILABLE_CORES - 1
-            return
-        cls.__LIMIT_CORES = value
+    def run(cls, method, iterable):
+        if cls.__ENGINE is None:
+            results = [method(iterable[i]) for i in range(len(iterable))]
+        else:
+            results = cls.__ENGINE(method, iterable)
+        return results
 
     def __init__(
         self,
@@ -81,6 +65,8 @@ class Annealer:
         alpha: float = 0.85,
         iterations: int = 1000,
         verbose: bool = False,
+        stopping_limit: float = None,
+        history_path: str = None,
     ):
         """
         Parameters
@@ -108,6 +94,11 @@ class Annealer:
         iterations: int
             Number of iterations to make (default value = 1000)
         verbose: bool (default is False)
+        stopping_limit: float
+            If specified, the algorithm will stop once the loss has stabilised around differences of less than
+            'stopping_limit' (see fit_one method).
+        history_path: str
+            If specified, fit will be stored here. Must be a .csv file.
 
         The number of iterations will be equal to int((temp_0 - temp_min) / temp_step_size).
         If temp_step_size is not specified, then the number of iterations is equal to 200. (0.5% at each step).
@@ -215,6 +206,14 @@ class Annealer:
         if not isinstance(iterations, int) or iterations <= 0:
             raise ValueError("Number of iterations must be an integer greater than 0")
         self.iterations = iterations
+
+        if stopping_limit is not None and (not isinstance(stopping_limit, float) or not 0 < stopping_limit < 1):
+            raise ValueError(f"Stopping limit must be a float between 0 and 1, got {stopping_limit}")
+        self.stopping_limit = stopping_limit
+
+        if history_path is not None and not isinstance(history_path, str):
+            raise ValueError(f"history_path must be a str, got {type(history_path)}")
+        self.history_path = history_path
 
     def info(self, msg: str):
         if self.verbose:
@@ -336,6 +335,20 @@ class Annealer:
         stopping_limit: float = None,
         history_path: str = None,
     ):
+
+        if alpha is None:
+            alpha = self.alpha
+        if temp_min is None:
+            temp_min = self.temp_min
+        if temp_0 is None:
+            temp_0 = self.temp_0
+        if iterations is None:
+            iterations = self.iterations
+        if stopping_limit is None:
+            stopping_limit = self.stopping_limit
+        if history_path is None:
+            history_path = self.history_path
+
         if npoints == 1:
             return self.fit_one(alpha, temp_min, temp_0, iterations, stopping_limit, history_path)
         else:
@@ -345,35 +358,25 @@ class Annealer:
                 )
             if history_path is not None:
                 history_path = Path(history_path)
-                history_paths = [
-                    str(history_path.parent / f"{history_path.stem}_{i}{history_path.suffix}") for i in range(npoints)
-                ]
-                history_path = str(history_path)
             annealers = [
                 Annealer(
                     loss=self.loss,
                     weights_step_size=self.weights_step_size,
                     bounds=self.bounds,
-                    temp_0=self.temp_0,
-                    temp_min=self.temp_min,
-                    alpha=self.alpha,
-                    iterations=self.iterations,
+                    temp_0=temp_0,
+                    temp_min=temp_min,
+                    alpha=alpha,
+                    iterations=iterations,
                     verbose=self.verbose,
-                )
-                for _ in range(npoints)
-            ]
-            # noinspection PyUnboundLocalVariable
-            results = [
-                annealers[i].fit_one(
-                    alpha,
-                    temp_min,
-                    temp_0,
-                    iterations,
-                    stopping_limit,
-                    history_paths[i] if history_path is not None else None,
+                    stopping_limit=stopping_limit,
+                    history_path=str(history_path.parent / f"{history_path.stem}_{i}{history_path.suffix}")
+                    if history_path is not None
+                    else None,
                 )
                 for i in range(npoints)
             ]
+            # noinspection PyUnboundLocalVariable
+            results = Annealer.run(Annealer.fit_one, annealers)
             return results
 
     # TODO (pcotte) : implement more cooling schedule
@@ -387,6 +390,10 @@ class Annealer:
             temp_0 = self.temp_0
         if iterations is None:
             iterations = self.iterations
+        if stopping_limit is None:
+            stopping_limit = self.stopping_limit
+        if history_path is None:
+            history_path = self.history_path
 
         if stopping_limit is not None and not 0 < stopping_limit < 1:
             raise ValueError("'limit' should be between 0 and 1")
