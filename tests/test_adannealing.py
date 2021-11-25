@@ -396,9 +396,9 @@ def test_fit_1d(init_states, bounds, acceptance):
         ann = Annealer(loss=loss_func, weights_step_size=0.1, init_states=init_states, bounds=bounds, verbose=True)
         w0, lmin, _, _ = ann.fit(stopping_limit=acceptance)
         print(w0, lmin)
-        if np.isclose(w0, 4.0565, rtol=5e-2, atol=5e-2) or np.isclose(w0, 0.39904, rtol=5e-2, atol=5e-2):
-            break
-        if np.isclose(lmin, -24.057, rtol=5e-2, atol=5e-2) or np.isclose(lmin, -1.7664, rtol=5e-2, atol=5e-2):
+        if (np.isclose(w0, 4.0565, rtol=5e-2, atol=5e-2) and np.isclose(lmin, -24.057, rtol=5e-2, atol=5e-2)) or (
+            np.isclose(w0, 0.39904, rtol=5e-2, atol=5e-2) and np.isclose(lmin, -1.7664, rtol=5e-2, atol=5e-2)
+        ):
             break
         attempts += 1
     if attempts == max_attempts:
@@ -426,9 +426,43 @@ def test_fit_2d(init_states, bounds, acceptance):
         if (
             np.isclose(w0[0], 4.0565, rtol=5e-2, atol=5e-2)
             and np.isclose(w0[1], 0, rtol=5e-2, atol=5e-2)
+            and np.isclose(lmin, -24.057, rtol=5e-2, atol=5e-2)
         ):
             break
-        if np.isclose(lmin, -24.057, rtol=5e-2, atol=5e-2):
+        attempts += 1
+    if attempts == max_attempts:
+        raise AssertionError("Fit failed")
+
+
+@pytest.mark.parametrize(
+    "init_states,bounds,acceptance",
+    [
+        (None, ((0, 5), (-1, 1)), None),
+        (None, ((0, 5), (-1, 1)), 0.03),
+    ],
+)
+def test_fit_2d_multipoint(init_states, bounds, acceptance):
+    attempts = 0
+    max_attempts = 5
+    while attempts < max_attempts:
+        # noinspection PyTypeChecker
+        ann = Annealer(loss=loss_func_2d, weights_step_size=0.1, init_states=init_states, bounds=bounds, verbose=True)
+        results = ann.fit(npoints=3, stopping_limit=acceptance)
+        assert len(results) == 3
+        success = 0
+        for w0, lmin, _, _ in results:
+            print(w0, lmin)
+            if (
+                np.isclose(w0[0], 4.0565, rtol=5e-2, atol=5e-2)
+                and np.isclose(w0[1], 0, rtol=5e-2, atol=5e-2)
+                and np.isclose(lmin, -24.057, rtol=5e-2, atol=5e-2)
+            ) or (
+                np.isclose(w0[0], 0.39904, rtol=5e-2, atol=5e-2)
+                and np.isclose(w0[1], 0, rtol=5e-2, atol=5e-2)
+                and np.isclose(lmin, -1.7664, rtol=5e-2, atol=5e-2)
+            ):
+                success += 1
+        if success == 3:
             break
         attempts += 1
     if attempts == max_attempts:
