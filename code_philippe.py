@@ -25,7 +25,6 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import logging
 import argparse
-import math
 import matplotlib.pyplot as plt
 from adlearn.engine import get_engine
 from time import time
@@ -210,13 +209,13 @@ def run(number_isins, do_plot, verbose=True):
     fig_hist = plot(hist, step_size=10)
     fig_hist.savefig(f"profiler/history_{number_isins}.pdf")
 
-    euclidian_norm = math.sqrt(((analy_opt.T[0] - numerical_solution) ** 2).sum())
-    error = euclidian_norm / math.sqrt((analy_opt.T[0] ** 2).sum())
+    error = val_at_best / loss_at_min
 
     logger.info(f"date : {date}")
     logger.info(f"Numerical loss : {val_at_best}")
     logger.info(f"Loss at analytical optimum : {loss_at_min}")
-    logger.info(f"Error : {100 * error} %, Euclidian norm: {euclidian_norm}")
+    logger.info(f"ratio of losses : {100 * error} %")
+    logger.info(f"Annealing time: {tf} s")
 
     if number_isins < 6 and do_plot:
         # doing a surface plot of the loss
@@ -389,7 +388,7 @@ def run(number_isins, do_plot, verbose=True):
     logger.info("...done")
     plt.close("all")
 
-    return error, euclidian_norm, tf
+    return error, tf
 
 
 if __name__ == "__main__":
@@ -430,20 +429,16 @@ if __name__ == "__main__":
             errors_norms_times = engine(run, isins, do_plot=False, verbose=False)
         else:
             errors_norms_times = [run(i, False, False) for i in isins]
-        errors = [err[0] for err in errors_norms_times]
-        norms = [err[1] for err in errors_norms_times]
-        times = [err[2] for err in errors_norms_times]
-        fig, axes = plt.subplots(3, 1, figsize=(10, 10))
-        axes[2].set_xlabel("# Isins", fontsize=15)
+        errors = [100 * err[0] for err in errors_norms_times]
+        times = [err[1] for err in errors_norms_times]
+        fig, axes = plt.subplots(2, 1, figsize=(10, 7))
+        axes[1].set_xlabel("# Isins", fontsize=15)
         axes[0].set_ylabel("Errors (%)", fontsize=15)
-        axes[1].set_ylabel("Euclidian norm to real", fontsize=15)
-        axes[2].set_ylabel("Annealing time (s)", fontsize=15)
+        axes[1].set_ylabel("Annealing time (s)", fontsize=15)
         axes[0].grid(True, ls="--", lw=0.2, alpha=0.5)
         axes[1].grid(True, ls="--", lw=0.2, alpha=0.5)
-        axes[2].grid(True, ls="--", lw=0.2, alpha=0.5)
-        axes[0].scatter(isins, 100 * errors, s=4)
-        axes[1].scatter(isins, norms, s=4)
-        axes[2].scatter(isins, times, s=4)
+        axes[0].scatter(isins, errors, s=4)
+        axes[1].scatter(isins, times, s=4)
         fig.savefig(f"profiler/profile_{args.start}_{args.end}_{args.step}.pdf")
     else:
         run(args.nisins, args.plot)
