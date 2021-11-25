@@ -389,7 +389,7 @@ def test_fit(init_states, bounds, acceptance):
             bounds=bounds,
             verbose=True
         )
-        w0, lmin, _, _ = ann.fit(acceptance_limit=acceptance)
+        w0, lmin, _, _ = ann.fit(stopping_limit=acceptance)
         print(w0, lmin)
         if np.isclose(w0, 4.0565, rtol=5e-2, atol=5e-2) or np.isclose(w0, 0.39904, rtol=5e-2, atol=5e-2):
             break

@@ -3,6 +3,7 @@ from typing import Callable, Union
 import os
 import logging
 import inspect
+from pathlib import Path
 
 import pandas as pd
 
@@ -19,9 +20,7 @@ def make_counter(iterable):
     dt = int(nitems / 10)
     if nitems < 10:
         dt = 1
-    indexes_to_print = {
-        i: f"{i}/{nitems}, {round(100 * i / nitems, 2)}%" for i in list(range(dt, nitems, dt))
-    }
+    indexes_to_print = {i: f"{i}/{nitems}, {round(100 * i / nitems, 2)}%" for i in list(range(dt, nitems, dt))}
     return indexes_to_print
 
 
@@ -143,13 +142,11 @@ class Annealer:
             self.dimensions = bounds.shape[0]
             for coordinate in range(self.dimensions):
                 if bounds[coordinate][0] > bounds[coordinate][1]:
-                    raise ValueError("Bounds are not valid : some lower limits are greater then their upper limits:\n"
-                                     f"{bounds}")
-            self.init_states = (
-                    bounds[:, 0]
-                    + np.random.uniform(size=(1, len(bounds)))
-                    * (bounds[:, 1] - bounds[:, 0])
-            )
+                    raise ValueError(
+                        "Bounds are not valid : some lower limits are greater then their upper limits:\n" f"{bounds}"
+                    )
+            self.init_states = bounds[:, 0] + np.random.uniform(size=(1, len(bounds))) * (bounds[:, 1] - bounds[:, 0])
+            self.bounds = bounds
         else:
             if isinstance(init_states, int):
                 init_states = float(init_states)
@@ -164,7 +161,7 @@ class Annealer:
             if init_states.ndim == 1:
                 init_states = init_states.reshape(1, init_states.shape[0])
             self.dimensions = init_states.shape[1]
-
+            self.bounds = None
             self.init_states = init_states
 
         if isinstance(weights_step_size, int):
@@ -211,7 +208,7 @@ class Annealer:
         if not isinstance(verbose, bool):
             raise TypeError(f"'verbose' must be a boolean, got {type(verbose)} instead.")
         self.verbose = verbose
-        
+
         if self.temp_0 is None:
             self.temp_0 = self.get_temp_max()
 
@@ -237,7 +234,7 @@ class Annealer:
             raise TypeError("'max_attempts' must be an integer")
         if max_attempt <= 0:
             raise ValueError("'max_attempts' must be greater than 0")
-        
+
         if ar_limit_up >= 0.95:
             raise ValueError("Acceptance ratio limit up can not be equal to or greater than 0.95")
 
@@ -247,17 +244,17 @@ class Annealer:
         t2 = 10
         t1 = t1_i
         acc_ratio_2, t0, acc_ratio_0 = None, None, None
-        ar_limit_mean = (ar_limit_up + ar_limit_low) / 2.
+        ar_limit_mean = (ar_limit_up + ar_limit_low) / 2.0
         ann = Annealer(
-                loss=self.loss,
-                weights_step_size=self.weights_step_size,
-                init_states=self.init_states,
-                temp_0=1,
-                temp_min=0,
-                alpha=1,
-                iterations=100,
-                verbose=False
-            )
+            loss=self.loss,
+            weights_step_size=self.weights_step_size,
+            init_states=self.init_states,
+            temp_0=1,
+            temp_min=0,
+            alpha=1,
+            iterations=100,
+            verbose=False,
+        )
         acc_ratio_1 = ann.fit(temp_0=t1, iterations=10000)[2]
 
         if ar_limit_low < acc_ratio_1 < ar_limit_up:
@@ -268,8 +265,10 @@ class Annealer:
             # Unlucky strike : t1 gives an acc_ratio greater than the upper limit.
             while acc_ratio_1 > ar_limit_up:
                 if attempts > max_attempt:
-                    raise ValueError(f"Could not find a temperature giving an acceptance ratio between {ar_limit_low} "
-                                     f"and {ar_limit_up} in less than {max_attempt} attempts")
+                    raise ValueError(
+                        f"Could not find a temperature giving an acceptance ratio between {ar_limit_low} "
+                        f"and {ar_limit_up} in less than {max_attempt} attempts"
+                    )
                 t1 = t1 / 10
                 acc_ratio_1 = ann.fit(temp_0=t1, iterations=10000)[2]
                 attempts += 1
@@ -277,8 +276,10 @@ class Annealer:
             attempts = 0
             while not ar_limit_low < acc_ratio < ar_limit_up:
                 if attempts > max_attempt:
-                    raise ValueError(f"Could not find a temperature giving an acceptance ratio between {ar_limit_low} "
-                                     f"and {ar_limit_up} in less than {max_attempt} attempts")
+                    raise ValueError(
+                        f"Could not find a temperature giving an acceptance ratio between {ar_limit_low} "
+                        f"and {ar_limit_up} in less than {max_attempt} attempts"
+                    )
                 acc_ratio_2 = ann.fit(temp_0=t2)[2]
                 self.info(f"Attempt {attempts}")
                 self.info(f"t1: {t1}, Acc. ratio : {acc_ratio_1} (fixed)")
@@ -296,13 +297,17 @@ class Annealer:
 
                 slope = (acc_ratio_2 - acc_ratio_1) / (t2 - t1)
                 if slope < 0:
-                    self.debug("Got a negative slope when trying to find starting temperature. Impossible : "
-                               "acceptance ratio should be strictly increasing with temperature")
+                    self.debug(
+                        "Got a negative slope when trying to find starting temperature. Impossible : "
+                        "acceptance ratio should be strictly increasing with temperature"
+                    )
                     attempts += 1
                     continue
                 if slope == 0:
-                    self.debug("Got a null slope when trying to find starting temperature. Impossible : "
-                               "acceptance ratio should be strictly increasing with temperature")
+                    self.debug(
+                        "Got a null slope when trying to find starting temperature. Impossible : "
+                        "acceptance ratio should be strictly increasing with temperature"
+                    )
                     attempts += 1
                     continue
                 t2 = max([0, (ar_limit_mean - acc_ratio_1) / slope - t1])
@@ -313,14 +318,66 @@ class Annealer:
         if t0 is None:
             t0 = t2
             acc_ratio_0 = acc_ratio_2
-            logger.warning(f"Could not find a suitable starting temperature. Will try annealing anyway with t0={t0} "
-                           f"(acc. ratio = {acc_ratio_0})")
+            logger.warning(
+                f"Could not find a suitable starting temperature. Will try annealing anyway with t0={t0} "
+                f"(acc. ratio = {acc_ratio_0})"
+            )
         else:
             self.info(f"Found starting temperature t0 = {t0} (acc. ratio = {acc_ratio_0})")
         return t0
 
+    def fit(
+        self,
+        npoints: int = 1,
+        alpha: float = None,
+        temp_min: float = None,
+        temp_0: float = None,
+        iterations: int = None,
+        stopping_limit: float = None,
+        history_path: str = None,
+    ):
+        if npoints == 1:
+            return self.fit_one(alpha, temp_min, temp_0, iterations, stopping_limit, history_path)
+        else:
+            if self.bounds is None:
+                raise ValueError(
+                    "If you want the annealing to start more than one initial states, bounds must be specified."
+                )
+            if history_path is not None:
+                history_path = Path(history_path)
+                history_paths = [
+                    str(history_path.parent / f"{history_path.stem}_{i}{history_path.suffix}") for i in range(npoints)
+                ]
+                history_path = str(history_path)
+            annealers = [
+                Annealer(
+                    loss=self.loss,
+                    weights_step_size=self.weights_step_size,
+                    bounds=self.bounds,
+                    temp_0=self.temp_0,
+                    temp_min=self.temp_min,
+                    alpha=self.alpha,
+                    iterations=self.iterations,
+                    verbose=self.verbose,
+                )
+                for _ in range(npoints)
+            ]
+            # noinspection PyUnboundLocalVariable
+            results = [
+                annealers[i].fit_one(
+                    alpha,
+                    temp_min,
+                    temp_0,
+                    iterations,
+                    stopping_limit,
+                    history_paths[i] if history_path is not None else None,
+                )
+                for i in range(npoints)
+            ]
+            return results
+
     # TODO (pcotte) : implement more cooling schedule
-    def fit(self, alpha=None, temp_min=None, temp_0=None, iterations=None, stopping_limit=None, history_path=None):
+    def fit_one(self, alpha=None, temp_min=None, temp_0=None, iterations=None, stopping_limit=None, history_path=None):
 
         if alpha is None:
             alpha = self.alpha
@@ -342,21 +399,25 @@ class Annealer:
             raise ValueError(f"'t0' must be a float greater than tmin, got {temp_0} <= {temp_min}")
         if iterations is None or not isinstance(iterations, int) or iterations <= 0:
             raise ValueError("Number of iterations must be an integer greater than 0")
-    
+
         b = temp_min * (1 - alpha)
-    
+
         self.info(f"Starting temp : {temp_0}")
         curr = self.init_states.copy()
         curr_loss = self.loss(curr.T)
+        while hasattr(curr_loss, "__len__") and len(curr_loss) == 1:
+            curr_loss = curr_loss[0]
+        if not isinstance(curr_loss, (int, float)):
+            raise ValueError(f"Return of loss function should be a number, got {type(curr_loss)}")
 
         check_loss_every = int(self.iterations / 100)
         if check_loss_every <= 5:
             stopping_limit = None
-    
+
         history = Sampler()
 
         to_print = make_counter(self.iterations)
-    
+
         points_accepted = 0
         acc_ratio = None
         loss_for_finishing = None
@@ -366,7 +427,7 @@ class Annealer:
         finishing = False
         prev_loss = None
         for i_ in range(self.iterations):
-    
+
             # take a step
             unit_v = np.random.uniform(size=(1, self.dimensions))
             unit_v = unit_v / np.linalg.norm(unit_v)
@@ -374,8 +435,12 @@ class Annealer:
             cov = np.zeros((curr.shape[1], curr.shape[1]), float)
             np.fill_diagonal(cov, self.weights_step_size)
             candidate = np.random.multivariate_normal(mean=curr.ravel(), cov=cov).reshape(curr.shape)
-    
+
             candidate_loss = self.loss(candidate.T)
+            if hasattr(candidate_loss, "__len__") and len(candidate_loss) == 1:
+                candidate_loss = candidate_loss[0]
+            if not isinstance(candidate_loss, (int, float)):
+                raise ValueError(f"Return of loss function should be a number, got {type(candidate_loss)}")
 
             accepted = candidate_loss < curr_loss
             if accepted:
@@ -459,7 +524,7 @@ class Annealer:
 
         if history_path is not None:
             history.data.to_csv(history_path)
-    
+
         return curr, curr_loss, acc_ratio, history
 
 
