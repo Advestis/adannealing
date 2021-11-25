@@ -525,7 +525,7 @@ class Annealer:
         if history_path is not None:
             history.data.to_csv(history_path)
 
-        return curr, curr_loss, acc_ratio, history
+        return curr[0], curr_loss, acc_ratio, history
 
 
 def finish(sampler: Sampler):

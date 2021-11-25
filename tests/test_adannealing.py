@@ -1,7 +1,9 @@
 import pytest
 import adutils
+
 adutils.init("logger")
 from adutils import setup_logger
+
 setup_logger()
 import numpy as np
 
@@ -15,6 +17,12 @@ def wrong_loss(x, y) -> float:
 def loss_func(w) -> float:
     x = w[0]
     return (x - 5) * (x - 2) * (x - 1) * x
+
+
+def loss_func_2d(w) -> float:
+    x = w[0]
+    y = w[1]
+    return (x - 5) * (x - 2) * (x - 1) * x + 10 * y ** 2
 
 
 # noinspection PyTypeChecker
@@ -317,20 +325,20 @@ def loss_func(w) -> float:
             None,
             "",
         ),
-     ]
+    ],
 )
 def test_init(
-        loss,
-        weights_step_size,
-        bounds,
-        init_states,
-        temp_0,
-        temp_min,
-        alpha,
-        iterations,
-        verbose,
-        expected_error_type,
-        expected_error_message,
+    loss,
+    weights_step_size,
+    bounds,
+    init_states,
+    temp_0,
+    temp_min,
+    alpha,
+    iterations,
+    verbose,
+    expected_error_type,
+    expected_error_message,
 ):
     if expected_error_type is not None:
         with pytest.raises(expected_error_type) as e:
@@ -370,30 +378,57 @@ def test_init(
         assert isinstance(ann.iterations, int)
 
 
-@pytest.mark.parametrize("init_states,bounds,acceptance", [
-    (None, ((0, 6),), None),
-    (None, ((0, 6),), 0.03),
-    (3.0, None, None),
-    (3.0, None, 0.03),
-    (3.0, ((0, 6),), None),
-    (3.0, ((0, 6),), 0.03),
-])
-def test_fit(init_states, bounds, acceptance):
+@pytest.mark.parametrize(
+    "init_states,bounds,acceptance",
+    [
+        (None, ((0, 6),), None),
+        (None, ((0, 6),), 0.03),
+        (3.0, None, None),
+        (3.0, None, 0.03),
+        (3.0, ((0, 6),), None),
+        (3.0, ((0, 6),), 0.03),
+    ],
+)
+def test_fit_1d(init_states, bounds, acceptance):
     attempts = 0
     max_attempts = 5
     while attempts < max_attempts:
-        ann = Annealer(
-            loss=loss_func,
-            weights_step_size=0.1,
-            init_states=init_states,
-            bounds=bounds,
-            verbose=True
-        )
+        ann = Annealer(loss=loss_func, weights_step_size=0.1, init_states=init_states, bounds=bounds, verbose=True)
         w0, lmin, _, _ = ann.fit(stopping_limit=acceptance)
         print(w0, lmin)
         if np.isclose(w0, 4.0565, rtol=5e-2, atol=5e-2) or np.isclose(w0, 0.39904, rtol=5e-2, atol=5e-2):
             break
         if np.isclose(lmin, -24.057, rtol=5e-2, atol=5e-2) or np.isclose(lmin, -1.7664, rtol=5e-2, atol=5e-2):
+            break
+        attempts += 1
+    if attempts == max_attempts:
+        raise AssertionError("Fit failed")
+
+
+@pytest.mark.parametrize(
+    "init_states,bounds,acceptance",
+    [
+        (None, ((0, 5), (-1, 1)), None),
+        (None, ((0, 5), (-1, 1)), 0.03),
+        ((3.0, 0.5), None, None),
+        ((3.0, 0.5), None, 0.03),
+        ((3.0, 0.5), ((0, 5), (-1, 1)), None),
+        ((3.0, 0.5), ((0, 5), (-1, 1)), 0.03),
+    ],
+)
+def test_fit_2d(init_states, bounds, acceptance):
+    attempts = 0
+    max_attempts = 5
+    while attempts < max_attempts:
+        ann = Annealer(loss=loss_func_2d, weights_step_size=0.1, init_states=init_states, bounds=bounds, verbose=True)
+        w0, lmin, _, _ = ann.fit(stopping_limit=acceptance)
+        print(w0, lmin)
+        if (
+            np.isclose(w0[0], 4.0565, rtol=5e-2, atol=5e-2)
+            and np.isclose(w0[1], 0, rtol=5e-2, atol=5e-2)
+        ):
+            break
+        if np.isclose(lmin, -24.057, rtol=5e-2, atol=5e-2):
             break
         attempts += 1
     if attempts == max_attempts:
