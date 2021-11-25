@@ -1,0 +1,11 @@
+{
+  "path_save_images": "profiler",
+  "date": "2021-03-03",
+  "common_fee": 0.0,
+  "overall_risk_coeff": 1e2,
+  "n_iterations": 1e5,
+  "step_size": 1e-2,
+  "alpha": 0.999,
+  "date_start": "2021-01-01",
+  "date_end": "2021-10-01"
+}
