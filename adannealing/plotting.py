@@ -38,6 +38,10 @@ class Sampler:
             raise ValueError("Sampler was initialised with an outside history : can not add more points.")
         self.points.append(value)
 
+    def clean(self):
+        self._data = pd.DataFrame()
+        self.points = []
+
     def __len__(self):
         if self.points is None:
             return len(self._data.index)

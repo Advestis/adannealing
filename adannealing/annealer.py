@@ -320,7 +320,7 @@ class Annealer:
         return t0
 
     # TODO (pcotte) : implement more cooling schedule
-    def fit(self, alpha=None, temp_min=None, temp_0=None, iterations=None, acceptance_limit=None, history_path=None):
+    def fit(self, alpha=None, temp_min=None, temp_0=None, iterations=None, stopping_limit=None, history_path=None):
 
         if alpha is None:
             alpha = self.alpha
@@ -330,6 +330,9 @@ class Annealer:
             temp_0 = self.temp_0
         if iterations is None:
             iterations = self.iterations
+
+        if stopping_limit is not None and not 0 < stopping_limit < 1:
+            raise ValueError("'limit' should be between 0 and 1")
 
         if alpha is None or not isinstance(alpha, float) or not (0 < alpha <= 1):
             raise ValueError("'alpha' must be a float between 0 excluded and 1")
@@ -344,7 +347,11 @@ class Annealer:
     
         self.info(f"Starting temp : {temp_0}")
         curr = self.init_states.copy()
-        curr_eval = self.loss(curr.T)
+        curr_loss = self.loss(curr.T)
+
+        check_loss_every = int(self.iterations / 100)
+        if check_loss_every <= 5:
+            stopping_limit = None
     
         history = Sampler()
 
@@ -352,6 +359,12 @@ class Annealer:
     
         points_accepted = 0
         acc_ratio = None
+        loss_for_finishing = None
+        n_finishing = 0
+        n_finishing_max = 100
+        finishing_history = Sampler()
+        finishing = False
+        prev_loss = None
         for i_ in range(self.iterations):
     
             # take a step
@@ -362,44 +375,67 @@ class Annealer:
             np.fill_diagonal(cov, self.weights_step_size)
             candidate = np.random.multivariate_normal(mean=curr.ravel(), cov=cov).reshape(curr.shape)
     
-            candidate_eval = self.loss(candidate.T)
+            candidate_loss = self.loss(candidate.T)
 
-            accepted = candidate_eval < curr_eval
+            accepted = candidate_loss < curr_loss
             if accepted:
                 points_accepted = points_accepted + 1
-                curr, curr_eval = candidate, candidate_eval
-                self.debug(f"Accepted : {i_} f({curr}) = {curr_eval}")
+                prev_loss = curr_loss
+                curr, curr_loss = candidate, candidate_loss
+                self.debug(f"Accepted : {i_} f({curr}) = {curr_loss}")
             else:
-                diff = candidate_eval - curr_eval
+                diff = candidate_loss - curr_loss
                 metropolis = np.exp(-diff / temp_0)
                 if np.random.uniform() < metropolis:
                     accepted = True
                     points_accepted = points_accepted + 1
-                    curr, curr_eval = candidate, candidate_eval
-                    self.debug(f"Accepted : {i_} f({curr}) = {curr_eval}")
+                    prev_loss = curr_loss
+                    curr, curr_loss = candidate, candidate_loss
+                    self.debug(f"Accepted : {i_} f({curr}) = {curr_loss}")
                 else:
-                    self.debug(f"Rejected :{i_} f({candidate}) = {candidate_eval}")
+                    # prev_loss = None
+                    # loss_for_finishing = None
+                    # finishing = False
+                    # n_finishing = 0
+                    # finishing_history.clean()
+                    self.debug(f"Rejected :{i_} f({candidate}) = {candidate_loss}")
 
             acc_ratio = float(points_accepted) / float(i_ + 1)
-            SamplePoint(
+            sample = SamplePoint(
                 weights=candidate[0],
                 iteration=i_,
                 accepted=accepted,
-                loss=candidate_eval,
+                loss=candidate_loss,
                 temp=temp_0,
                 acc_ratio=acc_ratio,
-                sampler=history
             )
+            history.append(sample)
 
             temp_0 = temp_0 * alpha + b
             if i_ in to_print and to_print[i_] is not None:
                 self.info(f"step {to_print[i_]}, Temperature : {temp_0} | acc. ratio so far : {acc_ratio}")
-            if acceptance_limit is not None and acc_ratio <= acceptance_limit:
-                self.info("Reached acceptance limit. Stopping.")
-                break
 
-        if acceptance_limit is not None and acc_ratio > acceptance_limit:
-            logger.warning("Did not reached acceptance limit even though reached the limit of iterations.")
+            # Checking stopping criterion
+            if stopping_limit is not None and prev_loss is not None:
+                if not finishing:
+                    loss_for_finishing = prev_loss
+                    ratio = abs(curr_loss / loss_for_finishing - 1)
+                else:
+                    ratio = abs(curr_loss / loss_for_finishing - 1)
+                if ratio < stopping_limit:
+                    finishing = True
+                    finishing_history.append(sample)
+                    n_finishing += 1
+                    if n_finishing > n_finishing_max:
+                        self.info(f"Variation of loss is small enough after step {i_}, stopping")
+                        curr, curr_loss, acc_ratio = finish(finishing_history)
+                        curr = curr.reshape(1, curr.shape[0])
+                        break
+                else:
+                    loss_for_finishing = None
+                    finishing = False
+                    n_finishing = 0
+                    finishing_history.clean()
 
         self.info(f"Final temp : {temp_0}")
         self.info(f"Acc. ratio : {acc_ratio}")
@@ -407,4 +443,13 @@ class Annealer:
         if history_path is not None:
             history.data.to_csv(history_path)
     
-        return curr, curr_eval, acc_ratio, history
+        return curr, curr_loss, acc_ratio, history
+
+
+def finish(sampler: Sampler):
+    data = sampler.data
+    mask = data["loss"].drop_duplicates(keep="last").index
+    data = data.loc[mask]
+    # noinspection PyUnresolvedReferences
+    data = data.loc[(data["loss"] == data["loss"].min()).values]
+    return data["weights"].iloc[-1], data["loss"].iloc[-1], data["acc_ratio"].iloc[-1]
