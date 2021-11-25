@@ -6,6 +6,8 @@ import inspect
 
 import pandas as pd
 
+from .plotting import Sampler, SamplePoint
+
 logger = logging.getLogger(__name__)
 
 
@@ -36,81 +38,6 @@ def to_array(value: Union[int, float, list, np.ndarray, pd.Series, pd.DataFrame]
     if any(np.isnan(value.flatten())):
         raise ValueError(f"'{name}' can not contain NANs")
     return value.astype(float)
-
-
-class Sampler:
-    def __init__(self):
-        self.points = []
-        self._data = pd.DataFrame()
-
-    def append(self, value):
-        self.points.append(value)
-
-    def __len__(self):
-        return len(self.points)
-
-    def _process(self):
-        self._data = pd.DataFrame(
-            [[p.weights, p.iteration, p.acc_ratio, p.accepted, p.loss, p.temp] for p in self.points],
-            columns=["weights", "iteration", "acc_ratio", "accepted", "loss", "temp"]
-        )
-
-    @property
-    def weights(self):
-        if self._data.empty or len(self._data.index) != len(self):
-            self._process()
-        return self._data.loc[:, "weights"]
-
-    @property
-    def iteration(self):
-        if self._data.empty or len(self._data.index) != len(self):
-            self._process()
-        return self._data.loc[:, "iteration"]
-
-    @property
-    def acc_ratio(self):
-        if self._data.empty or len(self._data.index) != len(self):
-            self._process()
-        return self._data.loc[:, "acc_ratio"]
-
-    @property
-    def accepted(self):
-        if self._data.empty or len(self._data.index) != len(self):
-            self._process()
-        return self._data.loc[:, "accepted"]
-
-    @property
-    def loss(self):
-        if self._data.empty or len(self._data.index) != len(self):
-            self._process()
-        return self._data.loc[:, "loss"]
-
-    @property
-    def temp(self):
-        if self._data.empty or len(self._data.index) != len(self):
-            self._process()
-        return self._data.loc[:, "temp"]
-
-    @property
-    def data(self):
-        if self._data.empty or len(self._data.index) != len(self):
-            self._process()
-        return self._data
-
-
-class SamplePoint:
-    """ A class used by Annealer to keep track of its progress."""
-    def __init__(self, weights, iteration, acc_ratio, accepted, loss, temp, sampler: Union[None, Sampler] = None):
-        if sampler is not None and not isinstance(sampler, Sampler):
-            raise TypeError(f"Sampler must be of type 'Sampler', got {type(sampler)}")
-        self.weights = weights
-        self.iteration = iteration
-        self.acc_ratio = acc_ratio
-        self.accepted = accepted
-        self.loss = loss
-        self.temp = temp
-        if sampler is not None:
-            sampler.append(self)
 
 
 class Annealer:
@@ -393,7 +320,7 @@ class Annealer:
         return t0
 
     # TODO (pcotte) : implement more cooling schedule
-    def fit(self, alpha=None, temp_min=None, temp_0=None, iterations=None, acceptance_limit=None) -> tuple:
+    def fit(self, alpha=None, temp_min=None, temp_0=None, iterations=None, acceptance_limit=None, history_path=None):
 
         if alpha is None:
             alpha = self.alpha
@@ -476,5 +403,8 @@ class Annealer:
 
         self.info(f"Final temp : {temp_0}")
         self.info(f"Acc. ratio : {acc_ratio}")
+
+        if history_path is not None:
+            history.data.to_csv(history_path)
     
         return curr, curr_eval, acc_ratio, history
