@@ -40,6 +40,23 @@ def to_array(value: Union[int, float, list, np.ndarray, pd.Series, pd.DataFrame]
 
 class Annealer:
 
+    """ Class to do simulated annealing.
+
+    It is recommended to do
+
+    >>> import os
+    >>> os.environ["OMP_NUM_THREADS"] = "1"
+    >>> os.environ["OPENBLAS_NUM_THREADS"] = "1"
+    >>> os.environ["MKL_NUM_THREADS"] = "1"
+    >>> os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+    >>> os.environ["NUMEXPR_NUM_THREADS"] = "1"
+
+    Before using Annealer. The command above deactivate the automatic multithreading of NumPy operations, which
+    will acutally make you gain time. Indeed, the numpy operations used in Annealer are not very slow, but numerous, and
+    attempting multithreading will result in a lot of overhead, eventually losing time. It is better to use the
+    feature allowing one to do several annealing in parallel in order to have one finding the minimum before the others.
+    """
+
     __ENGINE = None
 
     @classmethod
@@ -63,7 +80,7 @@ class Annealer:
         temp_0: float = None,
         temp_min: float = 0,
         alpha: float = 0.85,
-        iterations: int = 1000,
+        iterations: int = 5000,
         verbose: bool = False,
         stopping_limit: float = None,
         history_path: str = None,
@@ -200,20 +217,24 @@ class Annealer:
             raise TypeError(f"'verbose' must be a boolean, got {type(verbose)} instead.")
         self.verbose = verbose
 
-        if self.temp_0 is None:
-            self.temp_0 = self.get_temp_max()
-
         if not isinstance(iterations, int) or iterations <= 0:
-            raise ValueError("Number of iterations must be an integer greater than 0")
+            raise ValueError(f"Number of iterations must be an integer greater than 0, got {iterations}")
         self.iterations = iterations
 
         if stopping_limit is not None and (not isinstance(stopping_limit, float) or not 0 < stopping_limit < 1):
             raise ValueError(f"Stopping limit must be a float between 0 and 1, got {stopping_limit}")
         self.stopping_limit = stopping_limit
 
+        if self.iterations < 5000 and self.stopping_limit is not None:
+            logger.warning("Iteration should not be less than 5000. Using 5000 instead.")
+            self.iterations = 5000
+
         if history_path is not None and not isinstance(history_path, str):
             raise ValueError(f"history_path must be a str, got {type(history_path)}")
         self.history_path = history_path
+
+        if self.temp_0 is None:
+            self.temp_0 = self.get_temp_max()
 
     def info(self, msg: str):
         if self.verbose:
@@ -253,8 +274,9 @@ class Annealer:
             alpha=1,
             iterations=100,
             verbose=False,
+            stopping_limit=None
         )
-        acc_ratio_1 = ann.fit(temp_0=t1, iterations=10000)[2]
+        acc_ratio_1 = ann.fit(temp_0=t1, iterations=1000, stopping_limit=None)[2]
 
         if ar_limit_low < acc_ratio_1 < ar_limit_up:
             # Lucky strike : t0 is already good !
@@ -269,7 +291,7 @@ class Annealer:
                         f"and {ar_limit_up} in less than {max_attempt} attempts"
                     )
                 t1 = t1 / 10
-                acc_ratio_1 = ann.fit(temp_0=t1, iterations=10000)[2]
+                acc_ratio_1 = ann.fit(temp_0=t1, iterations=1000, stopping_limit=None)[2]
                 attempts += 1
 
             attempts = 0
@@ -279,7 +301,7 @@ class Annealer:
                         f"Could not find a temperature giving an acceptance ratio between {ar_limit_low} "
                         f"and {ar_limit_up} in less than {max_attempt} attempts"
                     )
-                acc_ratio_2 = ann.fit(temp_0=t2)[2]
+                acc_ratio_2 = ann.fit(temp_0=t2, stopping_limit=None)[2]
                 self.info(f"Attempt {attempts}")
                 self.info(f"t1: {t1}, Acc. ratio : {acc_ratio_1} (fixed)")
                 self.info(f"t2: {t2}, Acc. ratio : {acc_ratio_2}")
@@ -395,6 +417,10 @@ class Annealer:
         if history_path is None:
             history_path = self.history_path
 
+        if iterations < 5000 and stopping_limit is not None:
+            logger.warning("Iteration should not be less than 5000 if using a stopping limit. Using 5000 instead.")
+            iterations = 5000
+
         if stopping_limit is not None and not 0 < stopping_limit < 1:
             raise ValueError("'limit' should be between 0 and 1")
 
@@ -417,23 +443,19 @@ class Annealer:
         if not isinstance(curr_loss, (int, float)):
             raise ValueError(f"Return of loss function should be a number, got {type(curr_loss)}")
 
-        check_loss_every = int(self.iterations / 100)
-        if check_loss_every <= 5:
-            stopping_limit = None
-
         history = Sampler()
 
-        to_print = make_counter(self.iterations)
+        to_print = make_counter(iterations)
 
         points_accepted = 0
         acc_ratio = None
         loss_for_finishing = None
         n_finishing = 0
-        n_finishing_max = 100
+        n_finishing_max = int(iterations / 1000)
         finishing_history = Sampler()
         finishing = False
         prev_loss = None
-        for i_ in range(self.iterations):
+        for i_ in range(iterations):
 
             # take a step
             unit_v = np.random.uniform(size=(1, self.dimensions))
@@ -495,7 +517,8 @@ class Annealer:
             ONLY CONSIDER LOSSES OF ACCEPTED POINTS.
             
             If so, remember loss(i-1) as loss_for_finishing and let the program run for n_finishing_max more iterations.
-            At each of those iterations, check that ratio < stopping_limit.
+            At each of those iterations, check that ratio < stopping_limit. n_finishing_max is one thousandth of the 
+            number of iterations.
             
             If not, forget loss_for_finishing, forget how many iterations we did since ratio was first lower than 
             stopping_limit, and continue decreasing temperature.

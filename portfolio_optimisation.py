@@ -8,6 +8,7 @@
 # [4] https://nathanrooy.github.io/posts/2020-05-14/simulated-annealing-with-python/
 
 import os
+
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
@@ -15,8 +16,10 @@ os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 
 import adutils
+
 adutils.init("logger")
 from adutils import setup_logger
+
 setup_logger()
 import numpy as np
 import pandas as pd
@@ -32,99 +35,21 @@ from time import time
 engine = get_engine(kind="multiproc", context="spawn", print_percent=None, max_cpus=10)
 
 from adannealing import Annealer, plot
+from profiling.financial import load_financial_configurations, analy_optim_mean_var, loss_portfolio_mean_var
 
 logger = logging.getLogger(__name__)
 
-all_prices = pd.read_parquet("PRICEACTION_adj_eur_isin_bloom.parquet")
 
-# parameters run ++++++++++++++++++++++++++++++++++++++++++++++++
-# Assumptions in the code:
-#   - common fees
-#   - weights_t-1 = equi
-path_save_images = "profiler"
-date = "2021-03-03"
-common_fee = 0.0
-overall_risk_coeff = 1e2
-n_iterations = int(1e5)
-step_size = 1e-2
-# alpha in geometrical cooling
-alpha = 0.999
-
-date_start = "2021-01-01"
-date_end = "2021-10-01"
-# parameters run ++++++++++++++++++++++++++++++++++++++++++++++++
-
-all_prices = all_prices[all_prices.index >= pd.Timestamp(date_start)]
-all_prices = all_prices[all_prices.index <= pd.Timestamp(date_end)]
-
-
-def loss_portfolio_score_based():
-    pass
-
-
-def loss_portfolio_mean_var(
-    wt_np: np.array,
-    wt_1_np: np.array,
-    r_np: np.array,
-    risk_coeff: float,
-    eps_np: np.array,
-    cov_np: np.array,
-    n: int,
-    by_component: bool = False,
-) -> float:
-
-    common_shape = (n, 1)
-    assert wt_np.shape == common_shape
-    assert wt_1_np.shape == common_shape
-    assert r_np.shape == common_shape
-    assert eps_np.shape == common_shape
-    assert cov_np.shape == (n, n)
-
-    return_term = r_np.T.dot(wt_np)
-    risk_term = 0.5 * wt_np.T.dot(cov_np.dot(wt_np))
-    fees_term = np.abs(wt_np - wt_1_np).T.dot(eps_np)
-
-    if by_component:
-        logger.info(f" [LOSS] return term : {return_term}")
-        logger.info(f" [LOSS] risk term : {risk_term}")
-        logger.info(f" [LOSS] fees term : {fees_term}")
-
-    loss = -return_term + risk_term * risk_coeff + fees_term
-
-    return loss[0][0]
-
-
-def box(x, point_low, point_high, sharpness, height, speed):
-
-    if point_low >= point_high:
-        raise RuntimeError("Box functon: lower boundary is larger-equal to the upper boundary.")
-
-    l_ = -1.0
-    r = +1.0
-    val = wall(l_, x, point_low, sharpness, height, speed)
-    val = val + wall(r, x, point_high, sharpness, height, speed)
-
-    return val
-
-
-def wall(lr, x, point, sharpness, height, speed):
-    val = (lr * speed * (x - point) + height) * sigmoid(lr * (x - point) * sharpness)
-    return val
-
-
-def sigmoid(x):
-    return 1.0 / (1.0 + np.exp(-x))
-
-
-def analy_optim_mean_var(r_np: np.array, risk_coeff: float, cov_np: np.array, n: int) -> np.ndarray:
-
-    common_shape = (n, 1)
-    assert r_np.shape == common_shape
-    assert cov_np.shape == (n, n)
-
-    optimum_w = np.linalg.inv(cov_np).dot(r_np) / risk_coeff
-
-    return optimum_w
+(
+    path_save_images,
+    date,
+    common_fee,
+    overall_risk_coeff,
+    n_iterations,
+    step_size,
+    alpha,
+    all_prices,
+) = load_financial_configurations("run_configs.json")
 
 
 def run(number_isins, do_plot, verbose=True):
@@ -157,6 +82,7 @@ def run(number_isins, do_plot, verbose=True):
         risk_coeff=overall_risk_coeff,
         cov_np=selected_cov.to_numpy(),
         n=len(chosen_isins),
+        cut=1e-8
     )
 
     # loss value at optimum
@@ -183,6 +109,7 @@ def run(number_isins, do_plot, verbose=True):
             n=len(chosen_isins),
             by_component=False,
         )
+
     # check the function is working correctly
     assert objective(analy_opt) == loss_at_min
 
@@ -199,22 +126,20 @@ def run(number_isins, do_plot, verbose=True):
         bounds=bounds,
         alpha=alpha,
         iterations=n_iterations,
-        verbose=verbose
+        verbose=verbose,
     )
-    numerical_solution, val_at_best, _, hist = ann.fit(
-        alpha=alpha,
-        stopping_limit=0.001
-    )
+    numerical_solution, val_at_best, _, hist = ann.fit(alpha=alpha, stopping_limit=0.001)
     tf = time() - t0
-    fig_hist = plot(hist, step_size=10)
+    fig_hist, fig_weights = plot(hist, step_size=10)
     fig_hist.savefig(f"profiler/history_{number_isins}.pdf")
+    fig_weights.savefig(f"profiler/weights_{number_isins}.pdf", transparent=True)
 
-    error = val_at_best / loss_at_min
+    error = (val_at_best - loss_at_min) / abs(loss_at_min)
 
     logger.info(f"date : {date}")
     logger.info(f"Numerical loss : {val_at_best}")
     logger.info(f"Loss at analytical optimum : {loss_at_min}")
-    logger.info(f"ratio of losses : {100 * error} %")
+    logger.info(f"error : {100 * error} %")
     logger.info(f"Annealing time: {tf} s")
 
     if number_isins < 6 and do_plot:
@@ -230,7 +155,7 @@ def run(number_isins, do_plot, verbose=True):
             print_grid=True,
         )
 
-        weights = np.array([w for w in hist.weights.values])
+        weights = hist.weights.values
 
         # TODO: to change following line if you look to different params rather than 1st and 2nd
         x_explored = weights[:, 0]
@@ -388,7 +313,7 @@ def run(number_isins, do_plot, verbose=True):
     logger.info("...done")
     plt.close("all")
 
-    return error, tf
+    return number_isins, 100 * error, tf
 
 
 if __name__ == "__main__":
@@ -399,24 +324,12 @@ if __name__ == "__main__":
     )
 
     parser.add_argument("-n", "--nisins", type=int, default=5, help="Number of isins to use")
-    parser.add_argument(
-        "-p", "--plot", action="store_true", help="Do plot if nisins <= 5"
-    )
-    parser.add_argument(
-        "-s", "--start", type=int, default=5, help="initial number of isins to use with 'profile'"
-    )
-    parser.add_argument(
-        "-S", "--step", type=int, default=1, help="Steps in number of isins to use with 'profile'"
-    )
-    parser.add_argument(
-        "-e", "--end", type=int, default=40, help="final number of isins to use with 'profile'"
-    )
-    parser.add_argument(
-        "-P", "--profile", action="store_true", help="Do profiling"
-    )
-    parser.add_argument(
-        "-m", "--multiproc", action="store_true", help="Do profiling in parallel"
-    )
+    parser.add_argument("-p", "--plot", action="store_true", help="Do plot if nisins <= 5")
+    parser.add_argument("-s", "--start", type=int, default=5, help="initial number of isins to use with 'profile'")
+    parser.add_argument("-S", "--step", type=int, default=1, help="Steps in number of isins to use with 'profile'")
+    parser.add_argument("-e", "--end", type=int, default=40, help="final number of isins to use with 'profile'")
+    parser.add_argument("-P", "--profile", action="store_true", help="Do profiling")
+    parser.add_argument("-m", "--multiproc", action="store_true", help="Do profiling in parallel")
 
     args = parser.parse_args()
 
@@ -429,16 +342,15 @@ if __name__ == "__main__":
             errors_norms_times = engine(run, isins, do_plot=False, verbose=False)
         else:
             errors_norms_times = [run(i, False, False) for i in isins]
-        errors = [100 * err[0] for err in errors_norms_times]
-        times = [err[1] for err in errors_norms_times]
+        isins, errors, times = zip(*errors_norms_times)
         fig, axes = plt.subplots(2, 1, figsize=(10, 7))
         axes[1].set_xlabel("# Isins", fontsize=15)
         axes[0].set_ylabel("Errors (%)", fontsize=15)
         axes[1].set_ylabel("Annealing time (s)", fontsize=15)
         axes[0].grid(True, ls="--", lw=0.2, alpha=0.5)
         axes[1].grid(True, ls="--", lw=0.2, alpha=0.5)
-        axes[0].scatter(isins, errors, s=4)
-        axes[1].scatter(isins, times, s=4)
-        fig.savefig(f"profiler/profile_{args.start}_{args.end}_{args.step}.pdf")
+        axes[0].scatter(isins, errors)
+        axes[1].scatter(isins, times)
+        fig.savefig(Path(path_save_images) / f"profile_{args.start}_{args.end}_{args.step}.pdf")
     else:
         run(args.nisins, args.plot)
