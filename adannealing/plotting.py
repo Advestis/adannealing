@@ -159,9 +159,9 @@ def plot(
         ax1 = fig2.add_subplot(grid[iplot, 0:5])
         ax2 = fig2.add_subplot(grid[iplot, 5])
         ax1.set_xlabel("Iterations")
-        ax1.set_ylabel("Weights")
+        ax1.set_ylabel(f"Weights {iplot}")
         ax2.set_ylabel("Loss")
-        ax2.set_xlabel("Weights")
+        ax2.set_xlabel(f"Weight {iplot}")
 
         ax1.scatter(
             weights.index,
