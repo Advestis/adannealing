@@ -1,8 +1,12 @@
+import os
+
 import numpy as np
 from typing import Callable, Union
 import logging
 import inspect
 from pathlib import Path
+import multiprocessing as mp
+from concurrent.futures import ProcessPoolExecutor
 
 import pandas as pd
 
@@ -57,19 +61,66 @@ class Annealer:
     feature allowing one to do several annealing in parallel in order to have one finding the minimum before the others.
     """
 
-    __ENGINE = None
+    __PARALLEL = False
+    __CPU_LIMIT = os.cpu_count()
 
     @classmethod
-    def set_parallel_engine(cls, engine):
-        cls.__ENGINE = engine
-
-    @classmethod
-    def run(cls, method, iterable):
-        if cls.__ENGINE is None:
-            results = [method(iterable[i]) for i in range(len(iterable))]
+    def set_parallel(cls):
+        if cls.__CPU_LIMIT > 1:
+            cls.__PARALLEL = True
         else:
-            results = cls.__ENGINE(method, iterable)
-        return results
+            logger.warning("CPU limit is 1, can not set Annealer to parallel. ")
+
+    @classmethod
+    def set_cpu_limit(cls, limit: int):
+        if not isinstance(limit, int):
+            raise TypeError(f"Number of CPUs must be an int, got {type(limit)}")
+        os_limit = os.cpu_count()
+        if os_limit > 1:
+            logger.warning(f"CPU limit can not me set to {limit} : hardware only has {os_limit} cores. Limiting cpu "
+                           f"limit to this value.")
+            limit = os_limit
+        cls.__CPU_LIMIT = limit
+        if limit == 1:
+            cls.__PARALLEL = False
+        else:
+            cls.__PARALLEL = True
+
+    @classmethod
+    def unset_parallel(cls):
+        cls.__PARALLEL = False
+
+    @classmethod
+    def fit_many(cls, iterable, stop_soon):
+        if not cls.__PARALLEL:
+            if not stop_soon:
+                return [cls.fit_one(iterable[i]) for i in range(len(iterable))]
+            results = []
+            for i in range(len(iterable)):
+                results.append(cls.fit_one(iterable[i]))
+                if results[-1][-1]:
+                    return results
+
+        else:
+            context = mp.get_context('spawn')
+            with ProcessPoolExecutor(max_workers=cls.__CPU_LIMIT, mp_context=context) as pool:
+                if not stop_soon:
+                    return list(pool.map(cls.fit_one, iterable))
+                results = [pool.submit(cls.fit_one, it) for it in iterable]
+                while True:
+                    returns = [res.result() for res in results if res.done()]
+                    if len(returns) >= 0:
+                        goods = [res for res in returns if res[-1]]
+                        if len(goods) > 0:
+                            best_loss = min([res[1] for res in goods])
+                            [run.cancel() for run in results]
+                            return [res for res in goods if res[1] == best_loss][0]
+                    if len(returns) == len(iterable):
+                        break
+            logger.warning("No run managed to reach the desired limit. Returning the run with lowest loss.")
+            results = [res.result() for res in results]
+            best_loss = min([res[1] for res in results])
+            return [res for res in results if res[1] == best_loss][0]
 
     def __init__(
         self,
@@ -358,6 +409,7 @@ class Annealer:
         iterations: int = None,
         stopping_limit: float = None,
         history_path: str = None,
+        stop_soon: bool = False
     ):
 
         if alpha is None:
@@ -400,7 +452,7 @@ class Annealer:
                 for i in range(npoints)
             ]
             # noinspection PyUnboundLocalVariable
-            results = Annealer.run(Annealer.fit_one, annealers)
+            results = Annealer.fit_many(annealers, stop_soon=stop_soon)
             return results
 
     # TODO (pcotte) : implement more cooling schedule
@@ -559,7 +611,7 @@ class Annealer:
             history.data.to_csv(Path(history_path) / "history.csv")
             finishing_history.data.to_csv(Path(history_path) / "result.csv")
 
-        return curr[0], curr_loss, acc_ratio, history, finishing_history
+        return curr[0], curr_loss, acc_ratio, history, finishing_history, finished
 
 
 def finish(sampler: Sampler):
