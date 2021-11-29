@@ -115,7 +115,7 @@ class Annealer:
             If specified, the algorithm will stop once the loss has stabilised around differences of less than
             'stopping_limit' (see fit_one method).
         history_path: str
-            If specified, fit will be stored here. Must be a .csv file.
+            If specified, fit will be stored here. Must be an existing directory.
 
         The number of iterations will be equal to int((temp_0 - temp_min) / temp_step_size).
         If temp_step_size is not specified, then the number of iterations is equal to 200. (0.5% at each step).
@@ -231,6 +231,8 @@ class Annealer:
 
         if history_path is not None and not isinstance(history_path, str):
             raise ValueError(f"history_path must be a str, got {type(history_path)}")
+        if history_path is not None and not Path(history_path).is_dir():
+            raise NotADirectoryError(f"Output '{history_path}' is not a directory.")
         self.history_path = history_path
 
         if self.temp_0 is None:
@@ -391,7 +393,7 @@ class Annealer:
                     iterations=iterations,
                     verbose=self.verbose,
                     stopping_limit=stopping_limit,
-                    history_path=str(history_path.parent / f"{history_path.stem}_{i}{history_path.suffix}")
+                    history_path=str(history_path / str(i))
                     if history_path is not None
                     else None,
                 )
@@ -457,7 +459,6 @@ class Annealer:
         prev_loss = None
         for i_ in range(iterations):
 
-            # take a step
             unit_v = np.random.uniform(size=(1, self.dimensions))
             unit_v = unit_v / np.linalg.norm(unit_v)
             assert np.isclose(np.linalg.norm(unit_v), 1.0)
@@ -487,11 +488,6 @@ class Annealer:
                     curr, curr_loss = candidate, candidate_loss
                     self.debug(f"Accepted : {i_} f({curr}) = {curr_loss}")
                 else:
-                    # prev_loss = None
-                    # loss_for_finishing = None
-                    # finishing = False
-                    # n_finishing = 0
-                    # finishing_history.clean()
                     self.debug(f"Rejected :{i_} f({candidate}) = {candidate_loss}")
 
             acc_ratio = float(points_accepted) / float(i_ + 1)
@@ -553,9 +549,10 @@ class Annealer:
         self.info(f"Acc. ratio : {acc_ratio}")
 
         if history_path is not None:
-            history.data.to_csv(history_path)
+            history.data.to_csv(Path(history_path) / "history.csv")
+            finishing_history.data.to_csv(Path(history_path) / "result.csv")
 
-        return curr[0], curr_loss, acc_ratio, history
+        return curr[0], curr_loss, acc_ratio, history, finishing_history
 
 
 def finish(sampler: Sampler):

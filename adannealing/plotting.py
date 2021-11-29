@@ -1,8 +1,8 @@
-import math
 from typing import Union
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
+from pathlib import Path
 from matplotlib import colors as cs
 from matplotlib.colors import LogNorm
 from matplotlib.lines import Line2D
@@ -138,7 +138,20 @@ class SamplePoint:
             sampler.append(self)
 
 
-def plot(sampler: Sampler, axisfontsizes=15, step_size=1, nweights: int = 10):
+def plot(sampler_path: Union[str, tuple], axisfontsizes=15, step_size=1, nweights: int = 10):
+    if isinstance(sampler_path, str):
+        sampler_path = Path(sampler_path)
+        sampler = sampler_path / "history.csv"
+        final_sampler = sampler_path / "result.csv"
+        if not sampler.is_file():
+            raise FileNotFoundError(f"No file 'history.csv' found in '{sampler_path}'")
+        if not final_sampler.is_file():
+            raise FileNotFoundError(f"No file 'result.csv' found in '{sampler_path}'")
+        sampler = Sampler(pd.read_csv(sampler, index_col=0))
+        final_sampler = Sampler(pd.read_csv(final_sampler, index_col=0))
+    else:
+        sampler, final_sampler = sampler_path
+
     fig, axes = plt.subplots(2, 1, figsize=(10, 7))
     axes[1].set_xlabel("Iterations", fontsize=axisfontsizes)
     axes[0].set_ylabel("Acc. ratio", fontsize=axisfontsizes)
@@ -159,55 +172,31 @@ def plot(sampler: Sampler, axisfontsizes=15, step_size=1, nweights: int = 10):
     if nweights == 0 or nweights is None:
         return fig
     weights = sampler.weights
+    final_weights = final_sampler.weights
     nweights = min(nweights, len(weights.columns))
 
     weights = weights.iloc[::step_size, :nweights]
-    weights = weights - weights.mean()
-    xlims = (weights.index[0], weights.index[-1])
-    ylims = (min(weights.values.flatten()), max(weights.values.flatten()))
-    xticks = np.linspace(xlims[0], xlims[1], 10)
-    yticks = np.linspace(ylims[0], ylims[1], 10)
-    nxticks, nyticks = len(xticks), len(yticks)
+    final_weights = final_weights.iloc[0, :nweights]
 
-    xstep, ystep = 15 / (100 * nweights), 7 / (10 * nweights)
-    theta = math.atan(ystep / xstep)
-    fig2, axes2 = plt.subplots(1, nweights, figsize=(15, 7))
-    pos1 = axes2[0].get_position()
-    axes2[-1].set_xlabel("Iterations")
-    axes2[-1].set_ylabel("Centered weights")
+    fig2, axes2 = plt.subplots(nweights, 1, figsize=(15, 2 * nweights))
     for iplot in range(0, nweights):
-        i = nweights - iplot - 1
+        axes2[iplot].set_xlabel("Iterations")
+        axes2[iplot].set_ylabel("Weights")
 
-        shift = math.atan(math.sqrt((xstep * i) ** 2 + (ystep * i) ** 2))
-        xshift = math.atan(xstep * i)
-        print(xshift, xstep * i)
-        axes2[iplot].set_position(
-            [
-                pos1.x0 + math.atan(xstep * i),
-                pos1.y0 + math.atan(ystep * i),
-                pos1.width * nweights - math.atan(xstep * i),
-                pos1.height - math.atan(ystep * i),
-            ]
-        )
-
-        axes2[iplot].spines["right"].set_visible(False)
-        axes2[iplot].spines["top"].set_visible(False)
-        axes2[iplot].plot(
+        axes2[iplot].scatter(
             weights.index,
             weights.iloc[:, iplot],
-            c=pick_color(iplot, nweights),
-            lw=2,
-            alpha=0.75,
-            # marker=pick_ms(iplot, nweights),
+            s=7,
+            c=temps,
+            cmap=cmap,
+            norm=LogNorm(),
         )
-        axes2[iplot].set_xlim(xlims)
-        axes2[iplot].set_ylim(ylims)
-        axes2[iplot].set_xticks(xticks)
-        axes2[iplot].set_yticks(yticks)
-        if iplot != nweights - 1:
-            axes2[iplot].set_xticklabels([""] * nxticks)
-            axes2[iplot].set_yticklabels([""] * nyticks)
-
+        axes2[iplot].plot(
+            [weights.index[0], weights.index[-1]], [final_weights.iloc[iplot], final_weights.iloc[iplot]], c="black"
+        )
+        axes2[iplot].text(
+            weights.index[0], final_weights.iloc[iplot], s=f"{round(final_weights.iloc[iplot], 3)}", c="black"
+        )
     return fig, fig2
 
 

@@ -128,9 +128,9 @@ def run(number_isins, do_plot, verbose=True):
         iterations=n_iterations,
         verbose=verbose,
     )
-    numerical_solution, val_at_best, _, hist = ann.fit(alpha=alpha, stopping_limit=0.001)
+    numerical_solution, val_at_best, _, hist, final_hist = ann.fit(alpha=alpha, stopping_limit=0.001)
     tf = time() - t0
-    fig_hist, fig_weights = plot(hist, step_size=10)
+    fig_hist, fig_weights = plot((hist, final_hist), step_size=10)
     fig_hist.savefig(f"profiler/history_{number_isins}.pdf")
     fig_weights.savefig(f"profiler/weights_{number_isins}.pdf", transparent=True)
 
