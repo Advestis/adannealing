@@ -3,36 +3,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
-from matplotlib import colors as cs
 from matplotlib.colors import LogNorm
-from matplotlib.lines import Line2D
-
-
-mss = list([m for m, v in Line2D.markers.items() if v != "nothing" and isinstance(m, str)])
-lmss = len(mss)
-colors = [c for c in list(cs.CSS4_COLORS.keys()) if "white" not in c]
-colors.remove("aliceblue")
-colors.remove("lavender")
-colors.remove("honeydew")
-colors.remove("lemonchiffon")
-colors.remove("linen")
-colors.remove("mistyrose")
-colors.remove("palegoldenrod")
-colors.remove("aqua")
-colors.remove("cyan")
-colors.remove("lavenderblush")
-colors.remove("lightyellow")
-colors.remove("moccasin")
-colors.remove("aquamarine")
-colors.remove("lawngreen")
-colors.remove("azure")
-colors.remove("cornsilk")
-colors.remove("lightgoldenrodyellow")
-colors.remove("beige")
-colors.remove("bisque")
-colors.remove("oldlace")
-colors.remove("peachpuff")
-lc = len(colors)
+from matplotlib.gridspec import GridSpec
 
 
 def make_segments(x, y):
@@ -80,13 +52,7 @@ class Sampler:
         return pd.DataFrame(index=self._data.index, data=np.array([w for w in self._data.loc[:, "weights"].values]))
 
     @property
-    def iteration(self):
-        if self._data.empty or len(self._data.index) != len(self):
-            self._process()
-        return self._data.loc[:, "iteration"]
-
-    @property
-    def acc_ratio(self):
+    def acc_ratios(self):
         if self._data.empty or len(self._data.index) != len(self):
             self._process()
         return self._data.loc[:, "acc_ratio"]
@@ -98,13 +64,13 @@ class Sampler:
         return self._data.loc[:, "accepted"]
 
     @property
-    def loss(self):
+    def losses(self):
         if self._data.empty or len(self._data.index) != len(self):
             self._process()
         return self._data.loc[:, "loss"]
 
     @property
-    def temp(self):
+    def temps(self):
         if self._data.empty or len(self._data.index) != len(self):
             self._process()
         return self._data.loc[:, "temp"]
@@ -138,7 +104,12 @@ class SamplePoint:
             sampler.append(self)
 
 
-def plot(sampler_path: Union[str, tuple], axisfontsizes=15, step_size=1, nweights: int = 10):
+def plot(
+    sampler_path: Union[str, tuple],
+    axisfontsizes=15,
+    step_size=1,
+    nweights: int = 10,
+):
     if isinstance(sampler_path, str):
         sampler_path = Path(sampler_path)
         sampler = sampler_path / "history.csv"
@@ -160,9 +131,9 @@ def plot(sampler_path: Union[str, tuple], axisfontsizes=15, step_size=1, nweight
     axes[1].grid(True, ls="--", lw=0.2, alpha=0.5)
     cmap = plt.get_cmap("inferno")
     iterations = sampler.iterations.values[::step_size]
-    temps = sampler.temp.values[::step_size]
-    axes[0].scatter(iterations, sampler.acc_ratio.values[::step_size], c=temps, cmap=cmap, norm=LogNorm())
-    im = axes[1].scatter(iterations, sampler.loss.values[::step_size], c=temps, cmap=cmap, norm=LogNorm())
+    temps = sampler.temps.values[::step_size]
+    axes[0].scatter(iterations, sampler.acc_ratios.values[::step_size], c=temps, cmap=cmap, norm=LogNorm())
+    im = axes[1].scatter(iterations, sampler.losses.values[::step_size], c=temps, cmap=cmap, norm=LogNorm())
     fig.subplots_adjust(right=0.8)
     cbar_ax = fig.add_axes([0.82, 0.11, 0.03, 0.77])
     cbar = fig.colorbar(im, cax=cbar_ax)
@@ -172,18 +143,27 @@ def plot(sampler_path: Union[str, tuple], axisfontsizes=15, step_size=1, nweight
     if nweights == 0 or nweights is None:
         return fig
     weights = sampler.weights
+    losses = sampler.losses
     final_weights = final_sampler.weights
+    final_loss = final_sampler.losses
     nweights = min(nweights, len(weights.columns))
 
     weights = weights.iloc[::step_size, :nweights]
+    losses = losses.iloc[::step_size]
     final_weights = final_weights.iloc[0, :nweights]
 
-    fig2, axes2 = plt.subplots(nweights, 1, figsize=(15, 2 * nweights))
-    for iplot in range(0, nweights):
-        axes2[iplot].set_xlabel("Iterations")
-        axes2[iplot].set_ylabel("Weights")
+    grid = GridSpec(nweights, 6, left=0.05, right=0.95, bottom=0.03, top=0.97, hspace=0.3, wspace=0.5)
+    fig2 = plt.figure(figsize=(22, 3 * nweights))
 
-        axes2[iplot].scatter(
+    for iplot in range(0, nweights):
+        ax1 = fig2.add_subplot(grid[iplot, 0:5])
+        ax2 = fig2.add_subplot(grid[iplot, 5])
+        ax1.set_xlabel("Iterations")
+        ax1.set_ylabel("Weights")
+        ax2.set_ylabel("Loss")
+        ax2.set_xlabel("Weights")
+
+        ax1.scatter(
             weights.index,
             weights.iloc[:, iplot],
             s=7,
@@ -191,31 +171,10 @@ def plot(sampler_path: Union[str, tuple], axisfontsizes=15, step_size=1, nweight
             cmap=cmap,
             norm=LogNorm(),
         )
-        axes2[iplot].plot(
+        ax1.plot(
             [weights.index[0], weights.index[-1]], [final_weights.iloc[iplot], final_weights.iloc[iplot]], c="black"
         )
-        axes2[iplot].text(
-            weights.index[0], final_weights.iloc[iplot], s=f"{round(final_weights.iloc[iplot], 3)}", c="black"
-        )
+        ax1.text(weights.index[0], final_weights.iloc[iplot], s=f"{round(final_weights.iloc[iplot], 3)}", c="black")
+        ax2.scatter(weights.iloc[:, iplot], losses, s=7, c=temps, cmap=cmap, norm=LogNorm())
+        ax2.scatter(final_weights.iloc[iplot], final_loss, s=10, c="red")
     return fig, fig2
-
-
-def pick_ms(n, nmax):
-    return pick(n, nmax, mss, lmss)
-
-
-def pick_color(n, nmax):
-    return pick(n, nmax, colors, lc)
-
-
-def pick(n, nmax, iterable, literable=None):
-    if literable is None:
-        literable = len(iterable)
-    if n >= literable:
-        while n >= literable:
-            n = n - literable
-        return iterable[n]
-    item = int(literable / nmax) * n
-    if item == nmax:
-        item = 0
-    return iterable[item]

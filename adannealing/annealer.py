@@ -456,6 +456,7 @@ class Annealer:
         n_finishing_max = int(iterations / 1000)
         finishing_history = Sampler()
         finishing = False
+        finished = False
         prev_loss = None
         for i_ in range(iterations):
 
@@ -536,8 +537,11 @@ class Annealer:
                     n_finishing += 1
                     if n_finishing > n_finishing_max:
                         self.info(f"Variation of loss is small enough after step {i_}, stopping")
-                        curr, curr_loss, acc_ratio = finish(finishing_history)
+                        curr, curr_loss, acc_ratio, last_index = finish(finishing_history)
+                        # noinspection PyProtectedMember
+                        finishing_history = Sampler(finishing_history._data.iloc[[last_index]])
                         curr = curr.reshape(1, curr.shape[0])
+                        finished = True
                         break
                 else:
                     loss_for_finishing = None
@@ -548,6 +552,9 @@ class Annealer:
         self.info(f"Final temp : {temp_0}")
         self.info(f"Acc. ratio : {acc_ratio}")
 
+        if not finished and not history.data.empty:
+            # noinspection PyProtectedMember
+            finishing_history = Sampler(history._data.iloc[[-1]])
         if history_path is not None:
             history.data.to_csv(Path(history_path) / "history.csv")
             finishing_history.data.to_csv(Path(history_path) / "result.csv")
@@ -561,4 +568,4 @@ def finish(sampler: Sampler):
     data = data.loc[mask]
     # noinspection PyUnresolvedReferences
     data = data.loc[(data["loss"] == data["loss"].min()).values]
-    return data["weights"].iloc[-1], data["loss"].iloc[-1], data["acc_ratio"].iloc[-1]
+    return data["weights"].iloc[-1], data["loss"].iloc[-1], data["acc_ratio"].iloc[-1], data.index[-1]
