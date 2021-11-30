@@ -325,9 +325,9 @@ if __name__ == "__main__":
 
     parser.add_argument("-n", "--nisins", type=int, default=5, help="Number of isins to use")
     parser.add_argument("-p", "--plot", action="store_true", help="Do plot if nisins <= 5")
-    parser.add_argument("-s", "--start", type=int, default=5, help="initial number of isins to use with 'profile'")
+    parser.add_argument("-s", "--start", type=int, default=5, help="Initial number of isins to use with 'profile'")
     parser.add_argument("-S", "--step", type=int, default=1, help="Steps in number of isins to use with 'profile'")
-    parser.add_argument("-e", "--end", type=int, default=40, help="final number of isins to use with 'profile'")
+    parser.add_argument("-e", "--end", type=int, default=40, help="Final number of isins to use with 'profile'")
     parser.add_argument("-P", "--profile", action="store_true", help="Do profiling")
     parser.add_argument("-m", "--multiproc", action="store_true", help="Do profiling in parallel")
 
