@@ -91,15 +91,19 @@ class Annealer:
     def unset_parallel(cls):
         cls.__PARALLEL = False
 
+    # noinspection PyUnresolvedReferences
     @classmethod
-    def fit_many(cls, iterable, stop_soon):
+    def fit_many(cls, iterable, stop_soon, history_path):
         if not cls.__PARALLEL:
             if not stop_soon:
                 return [cls.fit_one(iterable[i]) for i in range(len(iterable))]
             results = []
             for i in range(len(iterable)):
-                results.append(cls.fit_one(iterable[i]))
+                results.append(cls.fit_one(iterable[i], history_path=None))
                 if results[-1][-1]:
+                    if history_path is not None:
+                        results[-3].data.to_csv(Path(history_path) / "history.csv")
+                        results[-2].data.to_csv(Path(history_path) / "result.csv")
                     return results
 
         else:
@@ -107,6 +111,8 @@ class Annealer:
             with ProcessPoolExecutor(max_workers=cls.__CPU_LIMIT, mp_context=context) as pool:
                 if not stop_soon:
                     return list(pool.map(cls.fit_one, iterable))
+                for it in iterable:
+                    it.history_path = None
                 results = [pool.submit(cls.fit_one, it) for it in iterable]
                 while True:
                     returns = [res.result() for res in results if res.done()]
@@ -115,13 +121,21 @@ class Annealer:
                         if len(goods) > 0:
                             best_loss = min([res[1] for res in goods])
                             [run.cancel() for run in results]
-                            return [res for res in goods if res[1] == best_loss][0]
+                            results = [res for res in goods if res[1] == best_loss][0]
+                            if history_path is not None:
+                                results[-3].data.to_csv(Path(history_path) / "history.csv")
+                                results[-2].data.to_csv(Path(history_path) / "result.csv")
+                            return results
                     if len(returns) == len(iterable):
                         break
             logger.warning("No run managed to reach the desired limit. Returning the run with lowest loss.")
             results = [res.result() for res in results]
             best_loss = min([res[1] for res in results])
-            return [res for res in results if res[1] == best_loss][0]
+            results = [res for res in results if res[1] == best_loss][0]
+            if history_path is not None:
+                results[-3].data.to_csv(Path(history_path) / "history.csv")
+                results[-2].data.to_csv(Path(history_path) / "result.csv")
+            return results
 
     def __init__(
         self,
@@ -457,7 +471,7 @@ class Annealer:
                 for i in range(npoints)
             ]
             # noinspection PyUnboundLocalVariable
-            results = Annealer.fit_many(annealers, stop_soon=stop_soon)
+            results = Annealer.fit_many(annealers, stop_soon=stop_soon, history_path=history_path)
             return results
 
     # TODO (pcotte) : implement more cooling schedule
