@@ -480,15 +480,23 @@ def test_fit_2d_multipoint(init_states, bounds, acceptance, multiproc):
 
 
 @pytest.mark.parametrize(
-    "init_states,bounds,acceptance,multiproc",
+    "init_states,bounds,acceptance,multiproc,npoints",
     [
-        (None, ((0, 5), (-1, 1)), None, False),
-        (None, ((0, 5), (-1, 1)), 0.01, False),
-        (None, ((0, 5), (-1, 1)), None, True),
-        (None, ((0, 5), (-1, 1)), 0.01, True),
+        (None, ((0, 5), (-1, 1)), None, False, 3),
+        (None, ((0, 5), (-1, 1)), 0.01, False, 3),
+        (None, ((0, 5), (-1, 1)), None, True, 3),
+        (None, ((0, 5), (-1, 1)), 0.01, True, 3),
+        (None, ((0, 5), (-1, 1)), None, False, 4),
+        (None, ((0, 5), (-1, 1)), 0.01, False, 4),
+        (None, ((0, 5), (-1, 1)), None, True, 4),
+        (None, ((0, 5), (-1, 1)), 0.01, True, 4),
+        (None, ((0, 5), (-1, 1)), None, False, 5),
+        (None, ((0, 5), (-1, 1)), 0.01, False, 5),
+        (None, ((0, 5), (-1, 1)), None, True, 5),
+        (None, ((0, 5), (-1, 1)), 0.01, True, 5),
     ],
 )
-def test_fit_2d_multipoint_stop_soon(init_states, bounds, acceptance, multiproc):
+def test_fit_2d_multipoint_stop_soon(init_states, bounds, acceptance, multiproc, npoints):
     attempts = 0
     max_attempts = 5
     while attempts < max_attempts:
@@ -498,7 +506,7 @@ def test_fit_2d_multipoint_stop_soon(init_states, bounds, acceptance, multiproc)
             Annealer.set_cpu_limit(1)
         # noinspection PyTypeChecker
         ann = Annealer(loss=loss_func_2d, weights_step_size=0.1, init_states=init_states, bounds=bounds, verbose=True)
-        w0, lmin, _, _, _, _ = ann.fit(npoints=3, stopping_limit=acceptance, stop_soon=True)
+        w0, lmin, _, _, _, _ = ann.fit(npoints=npoints, stopping_limit=acceptance, stop_soon=True)
         print(w0, lmin)
         if (
             np.isclose(w0[0], 4.0565, rtol=5e-1, atol=5e-1)

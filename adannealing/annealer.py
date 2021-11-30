@@ -7,6 +7,7 @@ import inspect
 from pathlib import Path
 import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor
+from more_itertools import distinct_combinations
 
 import pandas as pd
 
@@ -204,8 +205,8 @@ class Annealer:
                     raise ValueError(
                         "Bounds are not valid : some lower limits are greater then their upper limits:\n" f"{bounds}"
                     )
-            self.init_states = bounds[:, 0] + np.random.uniform(size=(1, len(bounds))) * (bounds[:, 1] - bounds[:, 0])
             self.bounds = bounds
+            self.init_states = None  # set later
         else:
             if isinstance(init_states, int):
                 init_states = float(init_states)
@@ -285,6 +286,9 @@ class Annealer:
         if history_path is not None and not Path(history_path).is_dir():
             raise NotADirectoryError(f"Output '{history_path}' is not a directory.")
         self.history_path = history_path
+
+        if self.init_states is None:
+            self.init_states = generate_init_states(bounds, 1, weights_step_size)
 
         if self.temp_0 is None:
             self.temp_0 = self.get_temp_max()
@@ -434,11 +438,12 @@ class Annealer:
                 )
             if history_path is not None:
                 history_path = Path(history_path)
+            init_states = generate_init_states(self.bounds, npoints, self.weights_step_size)
             annealers = [
                 Annealer(
                     loss=self.loss,
                     weights_step_size=self.weights_step_size,
-                    bounds=self.bounds,
+                    init_states=init_states[i],
                     temp_0=temp_0,
                     temp_min=temp_min,
                     alpha=alpha,
@@ -621,3 +626,42 @@ def finish(sampler: Sampler):
     # noinspection PyUnresolvedReferences
     data = data.loc[(data["loss"] == data["loss"].min()).values]
     return data["weights"].iloc[-1], data["loss"].iloc[-1], data["acc_ratio"].iloc[-1], data.index[-1]
+
+
+def generate_init_states(bounds, npoints, step_size: Union[int, np.ndarray]):
+    if npoints == 1:
+        return bounds[:, 0] + step_size + np.random.uniform(size=(1, len(bounds))) * (bounds[:, 1] - bounds[:, 0])
+    if npoints == 2:
+        return bounds[:, 0] + step_size, bounds[:, 1] - step_size
+    dim = bounds.shape[0]
+    zeros = np.zeros(shape=(dim,))
+    ones = np.ones(shape=(dim,))
+    l1 = np.concatenate((zeros, ones))
+    l2 = np.concatenate((ones, zeros))
+    init_states_indexes = np.array(
+        list(distinct_combinations(l1, dim)) + list(distinct_combinations(l2, dim))[1:-1],
+        dtype=np.uint8
+    )
+    if npoints < init_states_indexes.shape[0]:
+        to_keep = np.random.permutation(np.arange(0, init_states_indexes.shape[0]))
+        to_keep = to_keep[:npoints]
+        init_states_indexes = init_states_indexes[to_keep]
+
+    init_states = []
+    for init_state_index in init_states_indexes:
+        init_states.append([])
+        for i in range(len(init_state_index)):
+            index = init_state_index[i]
+            point = bounds[i, index]
+            if index == 0:
+                point += step_size if isinstance(step_size, float) else step_size[i]
+            else:
+                point -= step_size if isinstance(step_size, float) else step_size[i]
+            init_states[-1].append(point)
+
+    if npoints > init_states_indexes.shape[0]:
+        for _ in range(npoints - len(init_states)):
+            init_states.append(
+                bounds[:, 0] + step_size + np.random.uniform(size=(1, len(bounds))) * (bounds[:, 1] - bounds[:, 0])
+            )
+    return np.array(init_states)
