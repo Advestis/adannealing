@@ -1,4 +1,5 @@
 import os
+from time import sleep, time
 
 import numpy as np
 from typing import Callable, Union
@@ -6,7 +7,7 @@ import logging
 import inspect
 from pathlib import Path
 import multiprocessing as mp
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from more_itertools import distinct_combinations
 
 import pandas as pd
@@ -14,6 +15,20 @@ import pandas as pd
 from .plotting import Sampler, SamplePoint
 
 logger = logging.getLogger(__name__)
+
+
+def clean_dir(path):
+    t = time()
+    if path.is_file():
+        logger.warning(f"Could not delete directory {path} : is a file.")
+        return
+    while not path.is_dir():
+        if time() - t > 60:
+            logger.warning(f"Could not delete directory {path} : directory not found.")
+            return
+        sleep(1)
+    [f.unlink() for f in path.glob("*")]
+    path.rmdir()
 
 
 def make_counter(iterable):
@@ -104,29 +119,50 @@ class Annealer:
                     if history_path is not None:
                         results[-1][-3].data.to_csv(Path(history_path) / "history.csv")
                         results[-1][-2].data.to_csv(Path(history_path) / "result.csv")
+                        for j in range(i+1, len(iterable)):
+                            path = Path(history_path) / str(j)
+                            if path.is_dir():
+                                [f.unlink() for f in path.glob("*")]
+                                path.rmdir()
                     return results[-1]
         else:
             context = mp.get_context('spawn')
+            bads = []
+            found = False
             with ProcessPoolExecutor(max_workers=cls.__CPU_LIMIT, mp_context=context) as pool:
+
                 if not stop_soon:
                     return list(pool.map(cls.fit_one, iterable))
+
                 for it in iterable:
                     it.history_path = None
                 results = [pool.submit(cls.fit_one, it) for it in iterable]
+
                 while True:
-                    returns = [res.result() for res in results if res.done()]
-                    if len(returns) >= 0:
-                        goods = [res for res in returns if res[-1]]
+                    returns_index = [i for i in range(len(results)) if results[i].done()]
+                    returns = [results[i].result() for i in returns_index]
+
+                    if len(returns) > 0:
+                        goods = [res for res in returns if returns[-1]]
                         if len(goods) > 0:
                             best_loss = min([res[1] for res in goods])
                             [run.cancel() for run in results]
                             results = [res for res in goods if res[1] == best_loss][0]
                             if history_path is not None:
+                                bads = [j for j in range(iterable) if j not in returns]
                                 results[-3].data.to_csv(Path(history_path) / "history.csv")
                                 results[-2].data.to_csv(Path(history_path) / "result.csv")
-                            return results
+                            found = True
+                            break
                     if len(returns) == len(iterable):
                         break
+
+            if found:
+                if len(bads) > 0:
+                    with ThreadPoolExecutor(max_workers=cls.__CPU_LIMIT) as pool:
+                        pool.map(clean_dir, [history_path / str(j) for j in bads])
+                return results
+
             results = [res.result() for res in results]
 
         logger.warning("No run managed to reach the desired limit. Returning the run with lowest loss.")

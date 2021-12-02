@@ -141,7 +141,7 @@ def run(number_isins, do_plot, verbose=True):
         best_only=True
     )
     tf = time() - t0
-    fig_hist = plot(hpath, step_size=10, weights_names=chosen_isins)
+    fig_hist, _ = plot(hpath, step_size=10, weights_names=chosen_isins)
     fig_hist.savefig(str(Path(path_save_images) / f"history_{number_isins}.pdf"))
 
     error = (val_at_best - loss_at_min) / abs(loss_at_min)

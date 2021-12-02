@@ -130,6 +130,9 @@ def plot(
     nweights: int = 10,
     weights_names: list = None,
 ):
+
+    points = []
+
     if isinstance(sampler_path, (str, Path)):
         if isinstance(sampler_path, str):
             sampler_path = Path(sampler_path)
@@ -141,7 +144,7 @@ def plot(
                 int(directory.stem)
             except ValueError:
                 continue
-            plot(directory, axisfontsize, step_size, nweights, weights_names)
+            points.append(plot(directory, axisfontsize, step_size, nweights, weights_names)[-1])
 
         logger.info(f"Plotting annealing results from {sampler_path}...")
 
@@ -229,11 +232,16 @@ def plot(
         )
         ax1.text(iterations[0], final_weights[iplot], s=f"{round(final_weights[iplot], 3)}", c="black")
         ax2.scatter(weights[:, iplot], losses, s=7, c=temps, cmap=cmap, norm=LogNorm())
+
+        if len(points) > 0:
+            for point in points:
+                ax2.scatter(point[1][iplot], point[2], s=10, c="blue")
         ax2.scatter(final_weights[iplot], final_loss, s=10, c="red")
+
         add_colorbar(fig, im, ax2, axisfontsize)
 
     fig.savefig(str(sampler_path / "annealing.pdf"))
-    return fig
+    return fig, [iterations, final_weights, final_loss]
 
 
 def add_colorbar(fig, im, ax, axisfontsize):
