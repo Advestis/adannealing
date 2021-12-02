@@ -56,10 +56,10 @@ class Annealer:
     >>> os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
     >>> os.environ["NUMEXPR_NUM_THREADS"] = "1"
 
-    Before using Annealer. The command above deactivate the automatic multithreading of NumPy operations, which
+    Before using Annealer. The commands above deactivate the automatic multithreading of NumPy operations, which
     will acutally make you gain time. Indeed, the numpy operations used in Annealer are not very slow, but numerous, and
-    attempting multithreading will result in a lot of overhead, eventually losing time. It is better to use the
-    feature allowing one to do several annealing in parallel in order to have one finding the minimum before the others.
+    attempting multithreading will result in a lot of overhead, eventually slowing down the process. It is better to use
+    the feature allowing to do several runs in parallel in order to have one finding the minimum before the others.
     """
 
     __PARALLEL = False
