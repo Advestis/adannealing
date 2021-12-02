@@ -63,7 +63,7 @@ def loss_func_2d(w) -> float:
             None,
             None,
             ValueError,
-            "The loss function must accept exactly one parameter",
+            "The loss function must accept exactly 1 parameter(s)",
         ),
         (
             loss_func,
@@ -506,7 +506,7 @@ def test_fit_2d_multipoint_stop_soon(init_states, bounds, acceptance, multiproc,
             Annealer.set_cpu_limit(1)
         # noinspection PyTypeChecker
         ann = Annealer(loss=loss_func_2d, weights_step_size=0.1, init_states=init_states, bounds=bounds, verbose=True)
-        w0, lmin, _, _, _, _ = ann.fit(npoints=npoints, stopping_limit=acceptance, stop_soon=True)
+        w0, lmin, _, _, _, _ = ann.fit(npoints=npoints, stopping_limit=acceptance, best_only=True)
         print(w0, lmin)
         if (
             np.isclose(w0[0], 4.0565, rtol=5e-1, atol=5e-1)

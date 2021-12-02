@@ -2,9 +2,12 @@ from typing import Union
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
+import ast
 from pathlib import Path
 from matplotlib.colors import LogNorm
 from matplotlib.gridspec import GridSpec
+import logging
+logger = logging.getLogger(__name__)
 
 
 def make_segments(x, y):
@@ -14,9 +17,25 @@ def make_segments(x, y):
 
 
 class Sampler:
+    @staticmethod
+    def _manage_data(data: pd.DataFrame) -> pd.DataFrame:
+        def _handle_weights(weights: str) -> list:
+            while "  " in weights:
+                weights = weights.replace("  ", " ")
+            return ast.literal_eval(weights.replace(" ", ",").replace("[,", "["))
+        expected_columns = ["weights", "iteration", "acc_ratio", "accepted", "loss", "temp"]
+        for col in expected_columns:
+            if col not in data:
+                raise IndexError(f"Missing columns '{col}'")
+        if data.empty:
+            return data
+        if type(data["weights"].iloc[0]) == str:
+            data.loc[:, "weights"] = data.loc[:, "weights"].apply(_handle_weights)
+        return data
+
     def __init__(self, data: pd.DataFrame = None):
         if data is not None:
-            self._data = data
+            self._data = Sampler._manage_data(data)
             self.points = None
         else:
             self._data = pd.DataFrame()
@@ -105,76 +124,123 @@ class SamplePoint:
 
 
 def plot(
-    sampler_path: Union[str, tuple],
-    axisfontsizes=15,
+    sampler_path: Union[str, Path, tuple],
+    axisfontsize=15,
     step_size=1,
     nweights: int = 10,
+    weights_names: list = None,
 ):
-    if isinstance(sampler_path, str):
-        sampler_path = Path(sampler_path)
+    if isinstance(sampler_path, (str, Path)):
+        if isinstance(sampler_path, str):
+            sampler_path = Path(sampler_path)
+
+        for directory in sampler_path.glob("*"):
+            if not directory.is_dir():
+                continue
+            try:
+                int(directory.stem)
+            except ValueError:
+                continue
+            plot(directory, axisfontsize, step_size, nweights, weights_names)
+
+        logger.info(f"Plotting annealing results from {sampler_path}...")
+
         sampler = sampler_path / "history.csv"
         final_sampler = sampler_path / "result.csv"
         if not sampler.is_file():
-            raise FileNotFoundError(f"No file 'history.csv' found in '{sampler_path}'")
+            logger.warning(f"No file 'history.csv' found in '{sampler_path}'")
+            return None
         if not final_sampler.is_file():
-            raise FileNotFoundError(f"No file 'result.csv' found in '{sampler_path}'")
+            logger.warning(f"No file 'result.csv' found in '{sampler_path}'")
+            return None
         sampler = Sampler(pd.read_csv(sampler, index_col=0))
         final_sampler = Sampler(pd.read_csv(final_sampler, index_col=0))
+
     else:
         sampler, final_sampler = sampler_path
 
-    fig, axes = plt.subplots(2, 1, figsize=(10, 7))
-    axes[1].set_xlabel("Iterations", fontsize=axisfontsizes)
-    axes[0].set_ylabel("Acc. ratio", fontsize=axisfontsizes)
-    axes[1].set_ylabel("Loss", fontsize=axisfontsizes)
-    axes[0].grid(True, ls="--", lw=0.2, alpha=0.5)
-    axes[1].grid(True, ls="--", lw=0.2, alpha=0.5)
-    cmap = plt.get_cmap("inferno")
-    iterations = sampler.iterations.values[::step_size]
-    temps = sampler.temps.values[::step_size]
-    axes[0].scatter(iterations, sampler.acc_ratios.values[::step_size], c=temps, cmap=cmap, norm=LogNorm())
-    im = axes[1].scatter(iterations, sampler.losses.values[::step_size], c=temps, cmap=cmap, norm=LogNorm())
-    fig.subplots_adjust(right=0.8)
-    cbar_ax = fig.add_axes([0.82, 0.11, 0.03, 0.77])
-    cbar = fig.colorbar(im, cax=cbar_ax)
-    cbar_ax.yaxis.labelpad = 15
-    cbar.set_label("Temperature", rotation=270, fontsize=axisfontsizes)
-
-    if nweights == 0 or nweights is None:
-        return fig
     weights = sampler.weights
-    losses = sampler.losses
-    final_weights = final_sampler.weights
-    final_loss = final_sampler.losses
-    nweights = min(nweights, len(weights.columns))
+    if nweights is None:
+        nweights = 0
+    else:
+        if nweights == "all":
+            nweights = len(weights.columns)
+        else:
+            nweights = min(nweights, len(weights.columns))
 
-    weights = weights.iloc[::step_size, :nweights]
-    losses = losses.iloc[::step_size]
-    final_weights = final_weights.iloc[0, :nweights]
+    weights = weights.iloc[::step_size, :nweights].values
+    losses = sampler.losses.iloc[::step_size].values
+    iterations = sampler.iterations.values[::step_size]
+    acc_ratios = sampler.acc_ratios.iloc[::step_size].values
+    temps = sampler.temps.values[::step_size]
 
-    grid = GridSpec(nweights, 6, left=0.05, right=0.95, bottom=0.03, top=0.97, hspace=0.3, wspace=0.5)
-    fig2 = plt.figure(figsize=(22, 3 * nweights))
+    final_weights = final_sampler.weights.iloc[0, :nweights].values
+    final_loss = final_sampler.losses.values
+
+    grid = GridSpec(3 + nweights, 6, left=0.05, right=0.9, bottom=0.03, top=0.97, hspace=0.3, wspace=0.5)
+    fig = plt.figure(figsize=(22, 3 * (nweights + 3)))
+
+    first_ax = fig.add_subplot(grid[0, :])
+    second_ax = fig.add_subplot(grid[1, :])
+    third_ax = fig.add_subplot(grid[2, :])
+    first_ax.set_xlabel("Iterations", fontsize=axisfontsize)
+    first_ax.set_ylabel("Temp", fontsize=axisfontsize)
+    second_ax.set_xlabel("Iterations", fontsize=axisfontsize)
+    second_ax.set_ylabel("Acc. ratio", fontsize=axisfontsize)
+    third_ax.set_xlabel("Iterations", fontsize=axisfontsize)
+    third_ax.set_ylabel("Loss", fontsize=axisfontsize)
+    first_ax.grid(True, ls="--", lw=0.2, alpha=0.5)
+    second_ax.grid(True, ls="--", lw=0.2, alpha=0.5)
+    third_ax.grid(True, ls="--", lw=0.2, alpha=0.5)
+    cmap = plt.get_cmap("inferno")
+    first_ax.scatter(iterations, temps, c=temps, cmap=cmap, norm=LogNorm(), s=7)
+    second_ax.scatter(iterations, acc_ratios, c=temps, cmap=cmap, norm=LogNorm(), s=7)
+    im = third_ax.scatter(iterations, losses, c=temps, cmap=cmap, norm=LogNorm(), s=7)
+    third_ax.plot(
+        [iterations[0], iterations[-1]], [final_loss[-1], final_loss[-1]], c="black"
+    )
+    third_ax.text(iterations[0], final_loss[-1], s=f"{round(final_loss[-1], 3)}", c="black")
+    fig.subplots_adjust(right=0.8)
+
+    add_colorbar(fig, im, first_ax, axisfontsize)
+    add_colorbar(fig, im, second_ax, axisfontsize)
+    add_colorbar(fig, im, third_ax, axisfontsize)
 
     for iplot in range(0, nweights):
-        ax1 = fig2.add_subplot(grid[iplot, 0:5])
-        ax2 = fig2.add_subplot(grid[iplot, 5])
+        ax1 = fig.add_subplot(grid[iplot + 3, 0:5])
+        ax2 = fig.add_subplot(grid[iplot + 3, 5])
+        ax1.grid(True, ls="--", lw=0.2, alpha=0.5)
+        ax2.grid(True, ls="--", lw=0.2, alpha=0.5)
         ax1.set_xlabel("Iterations")
-        ax1.set_ylabel(f"Weights {iplot}")
+        ax1.set_ylabel(f"Weights {iplot if weights_names is None else weights_names[iplot]}")
         ax2.set_ylabel("Loss")
-        ax2.set_xlabel(f"Weight {iplot}")
+        ax2.set_xlabel(f"Weight {iplot if weights_names is None else weights_names[iplot]}")
 
         ax1.scatter(
-            weights.index,
-            weights.iloc[:, iplot],
+            iterations,
+            weights[:, iplot],
             s=7,
             c=temps,
             cmap=cmap,
             norm=LogNorm(),
         )
         ax1.plot(
-            [weights.index[0], weights.index[-1]], [final_weights.iloc[iplot], final_weights.iloc[iplot]], c="black"
+            [iterations[0], iterations[-1]], [final_weights[iplot], final_weights[iplot]], c="black"
         )
-        ax1.text(weights.index[0], final_weights.iloc[iplot], s=f"{round(final_weights.iloc[iplot], 3)}", c="black")
-        ax2.scatter(weights.iloc[:, iplot], losses, s=7, c=temps, cmap=cmap, norm=LogNorm())
-        ax2.scatter(final_weights.iloc[iplot], final_loss, s=10, c="red")
-    return fig, fig2
+        ax1.text(iterations[0], final_weights[iplot], s=f"{round(final_weights[iplot], 3)}", c="black")
+        ax2.scatter(weights[:, iplot], losses, s=7, c=temps, cmap=cmap, norm=LogNorm())
+        ax2.scatter(final_weights[iplot], final_loss, s=10, c="red")
+        add_colorbar(fig, im, ax2, axisfontsize)
+
+    fig.savefig(str(sampler_path / "annealing.pdf"))
+    return fig
+
+
+def add_colorbar(fig, im, ax, axisfontsize):
+
+    cbar_ax = fig.add_axes(
+        [ax.get_position().xmax + 0.01, ax.get_position().ymin, 0.025, ax.get_position().ymax - ax.get_position().ymin]
+    )
+    cbar = fig.colorbar(im, cax=cbar_ax)
+    cbar_ax.yaxis.labelpad = 15
+    cbar.set_label("Temperature", rotation=270, fontsize=axisfontsize)

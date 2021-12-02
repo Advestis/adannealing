@@ -37,6 +37,8 @@ engine = get_engine(kind="multiproc", context="spawn", print_percent=None, max_c
 from adannealing import Annealer, plot
 from profiling.financial import load_financial_configurations, analy_optim_mean_var, loss_portfolio_mean_var
 
+Annealer.set_cpu_limit(1)
+
 logger = logging.getLogger(__name__)
 
 
@@ -49,7 +51,7 @@ logger = logging.getLogger(__name__)
     step_size,
     alpha,
     all_prices,
-) = load_financial_configurations("run_configs.json")
+) = load_financial_configurations("profiling/run_configs.json")
 
 
 def run(number_isins, do_plot, verbose=True):
@@ -120,6 +122,9 @@ def run(number_isins, do_plot, verbose=True):
 
     # Using custom start temp.
     t0 = time()
+    hpath = (Path(path_save_images) / f"history_{number_isins}")
+    if not hpath.is_dir():
+        hpath.mkdir()
     ann = Annealer(
         loss=objective,
         weights_step_size=step_size,
@@ -127,12 +132,17 @@ def run(number_isins, do_plot, verbose=True):
         alpha=alpha,
         iterations=n_iterations,
         verbose=verbose,
+        history_path=str(hpath),
     )
-    numerical_solution, val_at_best, _, hist, final_hist, _ = ann.fit(alpha=alpha, stopping_limit=0.001)
+    numerical_solution, val_at_best, _, hist, final_hist, _ = ann.fit(
+        alpha=alpha,
+        stopping_limit=0.001,
+        npoints=2,
+        best_only=True
+    )
     tf = time() - t0
-    fig_hist, fig_weights = plot((hist, final_hist), step_size=10)
-    fig_hist.savefig(f"profiler/history_{number_isins}.pdf")
-    fig_weights.savefig(f"profiler/weights_{number_isins}.pdf", transparent=True)
+    fig_hist = plot(hpath, step_size=10, weights_names=chosen_isins)
+    fig_hist.savefig(str(Path(path_save_images) / f"history_{number_isins}.pdf"))
 
     error = (val_at_best - loss_at_min) / abs(loss_at_min)
 
@@ -351,6 +361,6 @@ if __name__ == "__main__":
         axes[1].grid(True, ls="--", lw=0.2, alpha=0.5)
         axes[0].scatter(isins, errors)
         axes[1].scatter(isins, times)
-        fig.savefig(Path(path_save_images) / f"profile_{args.start}_{args.end}_{args.step}.pdf")
+        fig.savefig(str(Path(path_save_images) / f"profile_{args.start}_{args.end}_{args.step}.pdf"))
     else:
         run(args.nisins, args.plot)

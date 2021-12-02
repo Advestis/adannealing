@@ -77,8 +77,8 @@ class Annealer:
         if not isinstance(limit, int):
             raise TypeError(f"Number of CPUs must be an int, got {type(limit)}")
         os_limit = os.cpu_count()
-        if os_limit > 1:
-            logger.warning(f"CPU limit can not me set to {limit} : hardware only has {os_limit} cores. Limiting cpu "
+        if os_limit < limit:
+            logger.warning(f"CPU limit can not be set to {limit} : hardware only has {os_limit} cores. Limiting cpu "
                            f"limit to this value.")
             limit = os_limit
         cls.__CPU_LIMIT = limit
@@ -102,10 +102,9 @@ class Annealer:
                 results.append(cls.fit_one(iterable[i], history_path=None))
                 if results[-1][-1]:
                     if history_path is not None:
-                        results[-3].data.to_csv(Path(history_path) / "history.csv")
-                        results[-2].data.to_csv(Path(history_path) / "result.csv")
-                    return results
-
+                        results[-1][-3].data.to_csv(Path(history_path) / "history.csv")
+                        results[-1][-2].data.to_csv(Path(history_path) / "result.csv")
+                    return results[-1]
         else:
             context = mp.get_context('spawn')
             with ProcessPoolExecutor(max_workers=cls.__CPU_LIMIT, mp_context=context) as pool:
@@ -128,14 +127,15 @@ class Annealer:
                             return results
                     if len(returns) == len(iterable):
                         break
-            logger.warning("No run managed to reach the desired limit. Returning the run with lowest loss.")
             results = [res.result() for res in results]
-            best_loss = min([res[1] for res in results])
-            results = [res for res in results if res[1] == best_loss][0]
-            if history_path is not None:
-                results[-3].data.to_csv(Path(history_path) / "history.csv")
-                results[-2].data.to_csv(Path(history_path) / "result.csv")
-            return results
+
+        logger.warning("No run managed to reach the desired limit. Returning the run with lowest loss.")
+        best_loss = min([res[1] for res in results])
+        results = [res for res in results if res[1] == best_loss][0]
+        if history_path is not None:
+            results[-3].data.to_csv(Path(history_path) / "history.csv")
+            results[-2].data.to_csv(Path(history_path) / "result.csv")
+        return results
 
     def __init__(
         self,
@@ -150,6 +150,7 @@ class Annealer:
         verbose: bool = False,
         stopping_limit: float = None,
         history_path: str = None,
+        loss_kwargs: dict = None,
     ):
         """
         Parameters
@@ -158,7 +159,7 @@ class Annealer:
             The loss function to minimize
         weights_step_size: Union[float, np.ndarray]
             Size of the variation to apply to each weights at each epoch. If a float is given, the same size is used for
-            every weights. If a np.ndarray is given, it must have 'dimensions' entries, each entry will be the step size
+            every weight. If a np.ndarray is given, it must have 'dimensions' entries, each entry will be the step size
             of one weight.
         bounds: np.ndarray
             Optional. The limit of the weights, used to determine initial state.
@@ -182,16 +183,23 @@ class Annealer:
             'stopping_limit' (see fit_one method).
         history_path: str
             If specified, fit will be stored here. Must be an existing directory.
+        loss_kwargs: dict
+            Additionnal kwargs for loss function
 
         The number of iterations will be equal to int((temp_0 - temp_min) / temp_step_size).
         If temp_step_size is not specified, then the number of iterations is equal to 200. (0.5% at each step).
         """
 
         self.dimensions = None
+
+        if loss_kwargs is not None:
+            self.loss_kwargs = loss_kwargs
+        else:
+            self.loss_kwargs = {}
         if not isinstance(loss, Callable):
             raise TypeError(f"The loss function must be callable, got a {type(loss)} instead")
-        if len(inspect.signature(loss).parameters) != 1:
-            raise ValueError("The loss function must accept exactly one parameter")
+        if len(inspect.signature(loss).parameters) != 1 + len(self.loss_kwargs):
+            raise ValueError(f"The loss function must accept exactly {1 + len(self.loss_kwargs)} parameter(s)")
         self.loss = loss
 
         if weights_step_size is None:
@@ -427,7 +435,7 @@ class Annealer:
         iterations: int = None,
         stopping_limit: float = None,
         history_path: str = None,
-        stop_soon: bool = False
+        best_only: bool = False
     ):
 
         if alpha is None:
@@ -453,6 +461,8 @@ class Annealer:
             if history_path is not None:
                 history_path = Path(history_path)
             init_states = generate_init_states(self.bounds, npoints, self.weights_step_size)
+            if history_path is not None:
+                [(history_path / str(i)).mkdir() for i in range(npoints) if not (history_path / str(i)).is_dir()]
             annealers = [
                 Annealer(
                     loss=self.loss,
@@ -471,7 +481,7 @@ class Annealer:
                 for i in range(npoints)
             ]
             # noinspection PyUnboundLocalVariable
-            results = Annealer.fit_many(annealers, stop_soon=stop_soon, history_path=history_path)
+            results = Annealer.fit_many(annealers, stop_soon=best_only, history_path=history_path)
             return results
 
     # TODO (pcotte) : implement more cooling schedule
@@ -510,7 +520,7 @@ class Annealer:
 
         self.info(f"Starting temp : {temp_0}")
         curr = self.init_states.copy()
-        curr_loss = self.loss(curr.T)
+        curr_loss = self.loss(curr.T, **self.loss_kwargs)
         while hasattr(curr_loss, "__len__") and len(curr_loss) == 1:
             curr_loss = curr_loss[0]
         if not isinstance(curr_loss, (int, float)):
@@ -538,7 +548,7 @@ class Annealer:
             np.fill_diagonal(cov, self.weights_step_size)
             candidate = np.random.multivariate_normal(mean=curr.ravel(), cov=cov).reshape(curr.shape)
 
-            candidate_loss = self.loss(candidate.T)
+            candidate_loss = self.loss(candidate.T, **self.loss_kwargs)
             if hasattr(candidate_loss, "__len__") and len(candidate_loss) == 1:
                 candidate_loss = candidate_loss[0]
             if not isinstance(candidate_loss, (int, float)):
