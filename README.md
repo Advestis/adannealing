@@ -130,3 +130,12 @@ In this example, calling **fit** will produce **n** directories in **logs**, eac
 The first is the entier history of the fit, the second is only the iteration that found the local minimum.
 If only one point is asked (either by using *npoints=1* or *stop_at_first_found=True*), will produce **history.csv** and **returns.csv**
 directly in **logs**, and will delete the subfolders of the runs that did not produce the local minimum.
+
+One can plot the result of a fit by doing
+
+```python
+from adannealing import plot
+
+# figure will be saved in logs/annealing.pdf
+fig = plot("logs", nweights=2, weights_names=["A", "B", "C"])
+```

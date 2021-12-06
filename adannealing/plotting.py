@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, Tuple
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
@@ -17,6 +17,7 @@ def make_segments(x, y):
 
 
 class Sampler:
+    """A class used by Annealer to keep track of its progress."""
     @staticmethod
     def _manage_data(data: pd.DataFrame) -> pd.DataFrame:
         def _handle_weights(weights: str) -> list:
@@ -124,12 +125,21 @@ class SamplePoint:
 
 
 def plot(
-    sampler_path: Union[str, Path, tuple],
+    sampler_path: Union[str, Path, Tuple[Sampler, Sampler]],
     axisfontsize=15,
     step_size=1,
     nweights: int = 10,
     weights_names: list = None,
-):
+) -> plt.Figure:
+    """From a directory containing 'result.csv' and 'history.csv', produces plots.
+    Will produce the file "annealing.pdf" in 'sampler_path' and return the corresponding Figure object.
+    If subfolders themselves containing 'result.csv' and 'history.csv' are present, will plot will call itself on them
+    too.
+    In the plot, will show the first 'nweights'.
+
+    'sampler_path' can also be a tuple of two Sampler objects, the first should then be the full history of the fit and
+    the second the point of the local minimum.
+    """
 
     points = []
 
