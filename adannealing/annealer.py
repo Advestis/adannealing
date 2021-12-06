@@ -2,7 +2,7 @@ import os
 from time import sleep, time
 
 import numpy as np
-from typing import Callable, Union
+from typing import Callable, Union, Dict, Any, Collection, Optional, Tuple, List
 import logging
 import inspect
 from pathlib import Path
@@ -17,7 +17,23 @@ from .plotting import Sampler, SamplePoint
 logger = logging.getLogger(__name__)
 
 
-def clean_dir(path):
+def clean_dir(path: Path) -> None:
+    """
+    Deletes a directory and all its content.
+    Will throw a warning if 'path' is a file.
+    If 'path' does not point to an existing directory, will retry each seconds for 1 minutes,
+    showing warnings everytime. If at the end of the minutes the directory did not appear,
+    returns without doing anything.
+
+    The directory must contain only files, not other directories. If at least one item is not a file, the function
+    raises IsADirectoryError without deleting anything.
+
+    Parameters:
+        path: Path
+
+    Returns:
+        None
+    """
     t = time()
     if path.is_file():
         logger.warning(f"Could not delete directory {path} : is a file.")
@@ -27,11 +43,24 @@ def clean_dir(path):
             logger.warning(f"Could not delete directory {path} : directory not found.")
             return
         sleep(1)
+
+    if not all([f.is_file() for f in path.glob("*")]):
+        raise IsADirectoryError(f"At least one of the items in {path} is not a file.")
     [f.unlink() for f in path.glob("*")]
     path.rmdir()
 
 
-def make_counter(iterable):
+def make_counter(iterable: Union[int, Collection[Any]]) -> Dict[int, str]:
+    """From a given sized iterable or number of items, returns a dictionnary of int:str with keys being the index of the
+    iterable (0, 1, ... , n) and values being 'i/n, xx, xx %' for each index matching 10%, 20%, ... 100% (rounded to the
+    closest index), and None everywhere.
+
+    Parameters:
+        iterable: Union[int, Collection[Any]]
+
+    Returns:
+        Dict[int, str]
+    """
     if isinstance(iterable, int):
         nitems = iterable
     else:
@@ -44,6 +73,26 @@ def make_counter(iterable):
 
 
 def to_array(value: Union[int, float, list, np.ndarray, pd.Series, pd.DataFrame], name: str) -> np.ndarray:
+    """
+    Converts 'value' into a numpy array, does not reshape. Will raise an error if value's type is not one of :
+     * int or bool
+     * float
+     * list
+     * np.ndarray
+     * pd.Series
+     * pd.DataFrame
+
+    'value' can not contain NaNs.
+    Argument 'name' is used for better error messages only.
+
+    Parameters:
+        value: Union[int, float, list, np.ndarray, pd.Series, pd.DataFrame]
+        name: str
+            For better error messages
+
+    Returns:
+        np.ndarray
+    """
     if not isinstance(value, np.ndarray):
         if isinstance(value, (float, int)):
             value = np.array([value])
@@ -60,7 +109,7 @@ def to_array(value: Union[int, float, list, np.ndarray, pd.Series, pd.DataFrame]
 
 class Annealer:
 
-    """ Class to do simulated annealing.
+    """Class to do simulated annealing.
 
     It is recommended to do
 
@@ -82,6 +131,8 @@ class Annealer:
 
     @classmethod
     def set_parallel(cls):
+        """When called, tells the Annealer class that it should use multiprocessing when doing a fit with more than
+        one initial states, otherwise that is done in serial. Throws a warning if the cpu limit is 1."""
         if cls.__CPU_LIMIT > 1:
             cls.__PARALLEL = True
         else:
@@ -89,12 +140,19 @@ class Annealer:
 
     @classmethod
     def set_cpu_limit(cls, limit: int):
+        """Sets the max number of CPU to use when doing a fit with more than one initial states.
+        Will throw a warning if the specified limit is inferior to the hardware capabilities. In that case, will use
+        as many CPUs as possible.
+        If the specified limit is greater than 1, sets the class to use multiprocessing (same as calling 'set_parallel')
+        """
         if not isinstance(limit, int):
-            raise TypeError(f"Number of CPUs must be an int, got {type(limit)}")
+            raise TypeError(f"Number of CPUs must be an integer, got {type(limit)}")
         os_limit = os.cpu_count()
         if os_limit < limit:
-            logger.warning(f"CPU limit can not be set to {limit} : hardware only has {os_limit} cores. Limiting cpu "
-                           f"limit to this value.")
+            logger.warning(
+                f"CPU limit can not be set to {limit} : hardware only has {os_limit} cores. Limiting cpu "
+                f"limit to this value."
+            )
             limit = os_limit
         cls.__CPU_LIMIT = limit
         if limit == 1:
@@ -104,39 +162,69 @@ class Annealer:
 
     @classmethod
     def unset_parallel(cls):
+        """Deactiates parallel runs when doing a fit with more than one initial state. Does not change the CPU limit."""
         cls.__PARALLEL = False
 
     # noinspection PyUnresolvedReferences
     @classmethod
-    def fit_many(cls, iterable, stop_soon, history_path):
+    def _fit_many(
+        cls, iterable: Collection["Annealer"], stop_at_first_found: bool, history_path: Union[None, str, Path]
+    ) -> Union[
+        List[Tuple[np.ndarray, float, float, Sampler, Sampler, bool]],
+        Tuple[np.ndarray, float, float, Sampler, Sampler, bool],
+    ]:
+        """Will call 'Annealer.fit_one' on an iterable of Annealer objects. Will either loop on the iterable if the
+        Annealer class was not specified to run in parallel, or use a ProcessPoolExecutor if it was.
+
+        If 'stop_at_first_found' is True, will do:
+        * If running in serial, will stop as soon a fit was successful (see self.fit_one for definition of 'successful')
+        * If running in parallel, will cancel runs as soon as at least one run is successful. Among all successful
+        finished runs, will keep the one with the smallest final loss.
+        * In both cases, if 'history_path' is specified, will clean the output directories of the discarded runs.
+        * Will only return one fit result
+        * If no run was successful , will return the one with the smallest loss and throw a warning.
+
+        Else, will return the list of all fit results.
+
+        Parameters:
+            iterable: Callable[Annealer]
+            stop_at_first_found: bool
+            history_path: Union[None, str, Path]
+
+        Returns:
+            Union[
+                List[Tuple[np.ndarray, float, float, Sampler, Sampler, bool]],
+                Tuple[np.ndarray, float, float, Sampler, Sampler, bool],
+            ]
+        """
         if not cls.__PARALLEL:
-            if not stop_soon:
-                return [cls.fit_one(iterable[i]) for i in range(len(iterable))]
+            if not stop_at_first_found:
+                return [cls._fit_one(iterable[i]) for i in range(len(iterable))]
             results = []
             for i in range(len(iterable)):
-                results.append(cls.fit_one(iterable[i], history_path=None))
+                results.append(cls._fit_one(iterable[i], history_path=None))
                 if results[-1][-1]:
                     if history_path is not None:
                         results[-1][-3].data.to_csv(Path(history_path) / "history.csv")
                         results[-1][-2].data.to_csv(Path(history_path) / "result.csv")
-                        for j in range(i+1, len(iterable)):
+                        for j in range(i + 1, len(iterable)):
                             path = Path(history_path) / str(j)
                             if path.is_dir():
                                 [f.unlink() for f in path.glob("*")]
                                 path.rmdir()
                     return results[-1]
         else:
-            context = mp.get_context('spawn')
+            context = mp.get_context("spawn")
             bads = []
             found = False
             with ProcessPoolExecutor(max_workers=cls.__CPU_LIMIT, mp_context=context) as pool:
 
-                if not stop_soon:
-                    return list(pool.map(cls.fit_one, iterable))
+                if not stop_at_first_found:
+                    return list(pool.map(cls._fit_one, iterable))
 
                 for it in iterable:
                     it.history_path = None
-                results = [pool.submit(cls.fit_one, it) for it in iterable]
+                results = [pool.submit(cls._fit_one, it) for it in iterable]
 
                 while True:
                     returns_index = [i for i in range(len(results)) if results[i].done()]
@@ -149,7 +237,7 @@ class Annealer:
                             [run.cancel() for run in results]
                             results = [res for res in goods if res[1] == best_loss][0]
                             if history_path is not None:
-                                bads = [j for j in range(iterable) if j not in returns]
+                                bads = [j for j in range(len(iterable)) if j not in returns]
                                 results[-3].data.to_csv(Path(history_path) / "history.csv")
                                 results[-2].data.to_csv(Path(history_path) / "result.csv")
                             found = True
@@ -176,9 +264,9 @@ class Annealer:
     def __init__(
         self,
         loss: Callable,
-        weights_step_size: Union[float, np.ndarray],
-        bounds: np.ndarray = None,
-        init_states: np.ndarray = None,
+        weights_step_size: Union[float, tuple, list, set, np.ndarray],
+        bounds: Union[tuple, list, set, np.ndarray] = None,
+        init_states: Union[tuple, list, set, np.ndarray] = None,
         temp_0: float = None,
         temp_min: float = 0,
         alpha: float = 0.85,
@@ -192,16 +280,17 @@ class Annealer:
         Parameters
         ----------
         loss: Callable
-            The loss function to minimize
-        weights_step_size: Union[float, np.ndarray]
+            The loss function to minimize. First argument is the np.ndarrays of all weights. It can also accept other
+            keyword arguments, passed through the 'loss_kwargs' dictionnary.
+        weights_step_size: Union[float, tuple, list, set, np.ndarray]
             Size of the variation to apply to each weights at each epoch. If a float is given, the same size is used for
             every weight. If a np.ndarray is given, it must have 'dimensions' entries, each entry will be the step size
             of one weight.
-        bounds: np.ndarray
+        bounds: Union[tuple, list, set, np.ndarray]
             Optional. The limit of the weights, used to determine initial state.
             Must be a 2-D array of size ('dimensions', 2). Note that if bounds are not specified,
             then init_states must be, and vice-versa.
-        init_states: np.ndarray
+        init_states: Union[tuple, list, set, np.ndarray]
             Optional. Initial values of the weights. Will use random values using 'bounds' if not specified.
             If specified, its size defines the number of dimensions. Note that if init_states are not specified,
             then bounds must be, and vice-versa.
@@ -349,25 +438,53 @@ class Annealer:
             self.init_states = generate_init_states(bounds, 1, weights_step_size)
 
         if self.temp_0 is None:
-            self.temp_0 = self.get_temp_max()
+            self.temp_0 = self._get_temp_max()
 
-    def info(self, msg: str):
+    def _info(self, msg: str):
+        """logs 'msg' with INFO level if self.verbose is True"""
         if self.verbose:
             logger.info(msg)
 
-    def debug(self, msg: str):
+    def _debug(self, msg: str):
+        """logs 'msg' with DEBUG level if self.verbose is True"""
         if self.verbose:
             logger.debug(msg)
 
-    def get_temp_max(self, ar_limit_low=0.79, ar_limit_up=0.81, max_attempt=100):
+    def _get_temp_max(self, ar_limit_low=0.79, ar_limit_up=0.81, max_attempts=100, t1_i=1e-5, t2=10.0) -> float:
+        """From self.loss, finds the starting temperature.
 
-        self.info(f"Looking for starting temperature...")
+        Will try to find a temperature T giving a final acceptance ratio AR between 'ar_limit_low'% and 'ar_limit_up'%,
+        by running several fits with fixed temperature (alpha=1) for each fit.
+        Between two consecutive fits, the function computes the slope (AR_j+1 - AR_j) / (T_j+1 - T_j) and estimates the
+        temperature of the next fit that would correspond to a value of (ar_limit_low + ar_limit_up)/2% using this
+        slope.
+        Stops once the acceptance ratio of the current fit is between 'ar_limit_low'% and 'ar_limit_up'%, or when
+        'max_attempts' unsuccessful attempts were made.
+        In that case, raises ValueError.
+
+        Parameters:
+            ar_limit_low: float
+                Default value = 0.79
+            ar_limit_up: float
+                Default value = 0.81
+            max_attempts: int
+                Default value = 100
+            t1_i: float
+                Temperature of first fit attempt (Default value = 1e-5)
+            t2: float
+                Temperature of second fit attempt (Default value = 10)
+
+        Returns:
+            float
+        """
+
+        self._info(f"Looking for starting temperature...")
 
         if ar_limit_up < ar_limit_low:
             raise ValueError("Acceptance ratio limit up must be greater than Acceptance ratio limit low")
-        if not isinstance(max_attempt, int):
+        if not isinstance(max_attempts, int):
             raise TypeError("'max_attempts' must be an integer")
-        if max_attempt <= 0:
+        if max_attempts <= 0:
             raise ValueError("'max_attempts' must be greater than 0")
 
         if ar_limit_up >= 0.95:
@@ -375,10 +492,8 @@ class Annealer:
 
         acc_ratio = 0
         attempts = 0
-        t1_i = 1e-5
-        t2 = 10
         t1 = t1_i
-        acc_ratio_2, t0, acc_ratio_0 = None, None, None
+        acc_ratio_2 = None
         ar_limit_mean = (ar_limit_up + ar_limit_low) / 2.0
         ann = Annealer(
             loss=self.loss,
@@ -389,41 +504,39 @@ class Annealer:
             alpha=1,
             iterations=100,
             verbose=False,
-            stopping_limit=None
+            stopping_limit=None,
         )
-        acc_ratio_1 = ann.fit(temp_0=t1, iterations=1000, stopping_limit=None)[2]
+        _, _, acc_ratio_1, _, _, _ = ann.fit(temp_0=t1, iterations=1000, stopping_limit=None)
 
         if ar_limit_low < acc_ratio_1 < ar_limit_up:
             # Lucky strike : t0 is already good !
-            acc_ratio_0 = acc_ratio_1
-            t0 = t1
+            acc_ratio_2 = acc_ratio_1
+            t2 = t1
         else:
             # Unlucky strike : t1 gives an acc_ratio greater than the upper limit.
             while acc_ratio_1 > ar_limit_up:
-                if attempts > max_attempt:
+                if attempts > max_attempts:
                     raise ValueError(
                         f"Could not find a temperature giving an acceptance ratio between {ar_limit_low} "
-                        f"and {ar_limit_up} in less than {max_attempt} attempts"
+                        f"and {ar_limit_up} in less than {max_attempts} attempts"
                     )
                 t1 = t1 / 10
-                acc_ratio_1 = ann.fit(temp_0=t1, iterations=1000, stopping_limit=None)[2]
+                _, _, acc_ratio_1, _, _, _ = ann.fit(temp_0=t1, iterations=1000, stopping_limit=None)
                 attempts += 1
 
             attempts = 0
             while not ar_limit_low < acc_ratio < ar_limit_up:
-                if attempts > max_attempt:
+                if attempts > max_attempts:
                     raise ValueError(
                         f"Could not find a temperature giving an acceptance ratio between {ar_limit_low} "
-                        f"and {ar_limit_up} in less than {max_attempt} attempts"
+                        f"and {ar_limit_up} in less than {max_attempts} attempts"
                     )
-                acc_ratio_2 = ann.fit(temp_0=t2, stopping_limit=None)[2]
-                self.info(f"Attempt {attempts}")
-                self.info(f"t1: {t1}, Acc. ratio : {acc_ratio_1} (fixed)")
-                self.info(f"t2: {t2}, Acc. ratio : {acc_ratio_2}")
+                _, _, acc_ratio_2, _, _, _ = ann.fit(temp_0=t2, stopping_limit=None)
+                self._info(f"Attempt {attempts}")
+                self._info(f"t1: {t1}, Acc. ratio : {acc_ratio_1} (fixed)")
+                self._info(f"t2: {t2}, Acc. ratio : {acc_ratio_2}")
 
                 if ar_limit_low < acc_ratio_2 < ar_limit_up:
-                    acc_ratio_0 = acc_ratio_2
-                    t0 = t2
                     break
 
                 if acc_ratio_2 > 0.95:
@@ -433,14 +546,14 @@ class Annealer:
 
                 slope = (acc_ratio_2 - acc_ratio_1) / (t2 - t1)
                 if slope < 0:
-                    self.debug(
+                    self._debug(
                         "Got a negative slope when trying to find starting temperature. Impossible : "
                         "acceptance ratio should be strictly increasing with temperature"
                     )
                     attempts += 1
                     continue
                 if slope == 0:
-                    self.debug(
+                    self._debug(
                         "Got a null slope when trying to find starting temperature. Impossible : "
                         "acceptance ratio should be strictly increasing with temperature"
                     )
@@ -451,16 +564,8 @@ class Annealer:
                     t2 = 2e-16
                 attempts += 1
 
-        if t0 is None:
-            t0 = t2
-            acc_ratio_0 = acc_ratio_2
-            logger.warning(
-                f"Could not find a suitable starting temperature. Will try annealing anyway with t0={t0} "
-                f"(acc. ratio = {acc_ratio_0})"
-            )
-        else:
-            self.info(f"Found starting temperature t0 = {t0} (acc. ratio = {acc_ratio_0})")
-        return t0
+        self._info(f"Found starting temperature t0 = {t2} (acc. ratio = {acc_ratio_2})")
+        return t2
 
     def fit(
         self,
@@ -471,8 +576,21 @@ class Annealer:
         iterations: int = None,
         stopping_limit: float = None,
         history_path: str = None,
-        best_only: bool = False
-    ):
+        stop_at_first_found: bool = False,
+        init_states: Union[tuple, list, set, np.ndarray] = None,
+    ) -> Union[
+        List[Tuple[np.ndarray, float, float, Sampler, Sampler, bool]],
+        Tuple[np.ndarray, float, float, Sampler, Sampler, bool],
+    ]:
+        """Try to find 'npoints' local minima of self.loss by running simulated annealing.
+
+        'npoints' defines the number of starting initial states to use. If it is greater than 1 and if 'stop_at_first'
+        if True, will return the first fit that is successful (see self.fit_one for definition of 'successful').
+
+        All the other arguments are detailed in self.__init__ and/or self._fit_one.
+
+        See Annealer._fit_many for meaning of returns.
+        """
 
         if alpha is None:
             alpha = self.alpha
@@ -486,9 +604,30 @@ class Annealer:
             stopping_limit = self.stopping_limit
         if history_path is None:
             history_path = self.history_path
+        if init_states is not None:
+            if isinstance(init_states, int):
+                init_states = float(init_states)
+            if not isinstance(init_states, float):
+                init_states = to_array(init_states, "init_states")
+                if init_states.ndim != 1 and not (init_states.ndim == 2 and init_states.shape[0] == 1):
+                    raise ValueError("'init_states' must be a 1-D numpy array or a line vector")
+            else:
+                if np.isnan(init_states):
+                    raise ValueError("'init_states' can not be NAN")
+                init_states = np.array([init_states])
+            if init_states.ndim == 1:
+                init_states = init_states.reshape(1, init_states.shape[0])
 
         if npoints == 1:
-            return self.fit_one(alpha, temp_min, temp_0, iterations, stopping_limit, history_path)
+            return self._fit_one(
+                alpha,
+                temp_min,
+                temp_0,
+                iterations,
+                stopping_limit,
+                history_path,
+                self.init_states if init_states is None else init_states,
+            )
         else:
             if self.bounds is None:
                 raise ValueError(
@@ -496,7 +635,12 @@ class Annealer:
                 )
             if history_path is not None:
                 history_path = Path(history_path)
-            init_states = generate_init_states(self.bounds, npoints, self.weights_step_size)
+            if init_states is None:
+                init_states = generate_init_states(self.bounds, npoints, self.weights_step_size)
+            elif len(init_states) != npoints:
+                raise ValueError(
+                    f"Asked to find {npoints} local minima, but specified only {len(init_states)} initial states."
+                )
             if history_path is not None:
                 [(history_path / str(i)).mkdir() for i in range(npoints) if not (history_path / str(i)).is_dir()]
             annealers = [
@@ -510,18 +654,69 @@ class Annealer:
                     iterations=iterations,
                     verbose=self.verbose,
                     stopping_limit=stopping_limit,
-                    history_path=str(history_path / str(i))
-                    if history_path is not None
-                    else None,
+                    history_path=str(history_path / str(i)) if history_path is not None else None,
                 )
                 for i in range(npoints)
             ]
             # noinspection PyUnboundLocalVariable
-            results = Annealer.fit_many(annealers, stop_soon=best_only, history_path=history_path)
+            results = Annealer._fit_many(annealers, stop_at_first_found=stop_at_first_found, history_path=history_path)
             return results
 
     # TODO (pcotte) : implement more cooling schedule
-    def fit_one(self, alpha=None, temp_min=None, temp_0=None, iterations=None, stopping_limit=None, history_path=None):
+    def _fit_one(
+        self,
+        alpha: Optional[float] = None,
+        temp_min: Optional[float] = None,
+        temp_0: Optional[float] = None,
+        iterations: Optional[float] = None,
+        stopping_limit: Optional[float] = None,
+        history_path: Optional[Union[str, Path]] = None,
+        init_states: Optional[np.ndarray] = None,
+    ) -> Tuple[np.ndarray, float, float, Sampler, Sampler, bool]:
+        """Try to find one local minimum of self.loss by running simulated annealing.
+        Starts at 'temp_0', finishes at 'temp_min', in 'iterations' steps.
+        Each step decreases the temperature according to
+
+        temp_0 <- temp_0 * alpha + (temp_min * (1 - alpha))
+
+        Stopping criterion:
+        -------------------
+
+        ratio = abs(loss(i) - loss(i-1) - 1) must be lower than 'stopping_limit'.
+
+        CONSIDERS LOSSES OF ACCEPTED AND REJECTED POINTS.
+
+        If so, remember loss(i-1) as loss_for_finishing and let the program run for n_finishing_max more iterations.
+        At each of those iterations, check that ratio < stopping_limit. n_finishing_max is one thousandth of the
+        number of iterations.
+
+        If not, forget loss_for_finishing, forget how many iterations we did since ratio was first lower than
+        stopping_limit, and continue decreasing temperature.
+
+        If it is, continue until n_finishing_max is reached or until ratio >= stopping_limit.
+
+        If n_finishing_max is reached, stop the algorithm. The returned weights are those matching the minimal value
+        of the loss among the n_finishing_max previous losses.
+
+        parameters
+            alpha: Optional[float]
+            temp_min: Optional[float]
+            temp_0: Optional[float]
+            iterations: Optional[float]
+            stopping_limit: Optional[float]
+            history_path: Optional[Union[str, Path]]
+            init_states: Optional[np.ndarray]
+
+        All parameters are optional.
+        Those which are not specified will default to the values specified in self.__init__.
+
+        Returns:
+            Tuple[np.ndarray, float, float, Sampler, Sampler, bool]
+            The weights of local minimum, its corresponding loss, the final acceptance ratio, the history of the fit in
+            the form of a Sampler object, another Sampler object containing only the point corresponding to the local
+            minimum, and True if the stopping limit was reached, else False.
+
+        """
 
         if alpha is None:
             alpha = self.alpha
@@ -535,6 +730,8 @@ class Annealer:
             stopping_limit = self.stopping_limit
         if history_path is None:
             history_path = self.history_path
+        if init_states is None:
+            init_states = self.init_states
 
         if iterations < 5000 and stopping_limit is not None:
             logger.warning("Iteration should not be less than 5000 if using a stopping limit. Using 5000 instead.")
@@ -554,8 +751,8 @@ class Annealer:
 
         b = temp_min * (1 - alpha)
 
-        self.info(f"Starting temp : {temp_0}")
-        curr = self.init_states.copy()
+        self._info(f"Starting temp : {temp_0}")
+        curr = init_states.copy()
         curr_loss = self.loss(curr.T, **self.loss_kwargs)
         while hasattr(curr_loss, "__len__") and len(curr_loss) == 1:
             curr_loss = curr_loss[0]
@@ -595,7 +792,7 @@ class Annealer:
                 points_accepted = points_accepted + 1
                 prev_loss = curr_loss
                 curr, curr_loss = candidate, candidate_loss
-                self.debug(f"Accepted : {i_} f({curr}) = {curr_loss}")
+                self._debug(f"Accepted : {i_} f({curr}) = {curr_loss}")
             else:
                 diff = candidate_loss - curr_loss
                 metropolis = np.exp(-diff / temp_0)
@@ -604,9 +801,9 @@ class Annealer:
                     points_accepted = points_accepted + 1
                     prev_loss = curr_loss
                     curr, curr_loss = candidate, candidate_loss
-                    self.debug(f"Accepted : {i_} f({curr}) = {curr_loss}")
+                    self._debug(f"Accepted : {i_} f({curr}) = {curr_loss}")
                 else:
-                    self.debug(f"Rejected :{i_} f({candidate}) = {candidate_loss}")
+                    self._debug(f"Rejected :{i_} f({candidate}) = {candidate_loss}")
 
             acc_ratio = float(points_accepted) / float(i_ + 1)
             sample = SamplePoint(
@@ -621,26 +818,10 @@ class Annealer:
 
             temp_0 = temp_0 * alpha + b
             if i_ in to_print and to_print[i_] is not None:
-                self.info(f"step {to_print[i_]}, Temperature : {temp_0} | acc. ratio so far : {acc_ratio}")
+                self._info(f"step {to_print[i_]}, Temperature : {temp_0} | acc. ratio so far : {acc_ratio}")
 
             """
-            Stopping criterion : 
-            
-            ratio = abs(loss(i) - loss(i-1) - 1) must be lower than stopping_limit.
-            
-            ONLY CONSIDER LOSSES OF ACCEPTED POINTS.
-            
-            If so, remember loss(i-1) as loss_for_finishing and let the program run for n_finishing_max more iterations.
-            At each of those iterations, check that ratio < stopping_limit. n_finishing_max is one thousandth of the 
-            number of iterations.
-            
-            If not, forget loss_for_finishing, forget how many iterations we did since ratio was first lower than 
-            stopping_limit, and continue decreasing temperature.
-            
-            If it is, continue until n_finishing_max is reached or until ratio >= stopping_limit.
-            
-            If n_finishing_max is reached, stop the algorithm. The returned weights are those matching the minimal value
-            of the loss among the n_finishing_max previous losses.
+            Checks stopping conditions
             """
             if stopping_limit is not None and prev_loss is not None:
                 if not finishing:
@@ -653,7 +834,7 @@ class Annealer:
                     finishing_history.append(sample)
                     n_finishing += 1
                     if n_finishing > n_finishing_max:
-                        self.info(f"Variation of loss is small enough after step {i_}, stopping")
+                        self._info(f"Variation of loss is small enough after step {i_}, stopping")
                         curr, curr_loss, acc_ratio, last_index = finish(finishing_history)
                         # noinspection PyProtectedMember
                         finishing_history = Sampler(finishing_history._data.iloc[[last_index]])
@@ -666,8 +847,8 @@ class Annealer:
                     n_finishing = 0
                     finishing_history.clean()
 
-        self.info(f"Final temp : {temp_0}")
-        self.info(f"Acc. ratio : {acc_ratio}")
+        self._info(f"Final temp : {temp_0}")
+        self._info(f"Acc. ratio : {acc_ratio}")
 
         if not finished and not history.data.empty:
             # noinspection PyProtectedMember
@@ -679,7 +860,9 @@ class Annealer:
         return curr[0], curr_loss, acc_ratio, history, finishing_history, finished
 
 
-def finish(sampler: Sampler):
+def finish(sampler: Sampler) -> Tuple[np.ndarray, float, float, int]:
+    """From a given history in the form of a Sampler object, finds the point with lowest loss and returns the
+    corresponding weights, loss, acceptance ratio and position in the index of the Sampler."""
     data = sampler.data
     mask = data["loss"].drop_duplicates(keep="last").index
     data = data.loc[mask]
@@ -688,7 +871,30 @@ def finish(sampler: Sampler):
     return data["weights"].iloc[-1], data["loss"].iloc[-1], data["acc_ratio"].iloc[-1], data.index[-1]
 
 
-def generate_init_states(bounds, npoints, step_size: Union[int, np.ndarray]):
+def generate_init_states(
+    bounds: np.ndarray, npoints: int, step_size: Union[int, np.ndarray]
+) -> Union[Tuple[np.ndarray, np.ndarray], List[np.ndarray], np.ndarray]:
+    """From given bounds, generates npoints initial states.
+
+    'bounds' must be of the form
+    [
+        [low_bound, high_bound],
+        [low_bound, high_bound],
+        [low_bound, high_bound],
+        ...,
+        [low_bound, high_bound]
+    ]
+    with one tuple [low_bound, high_bound] per dimension of the problem.
+
+    If npoints is lower or equal to 0, raises ValueError.
+    If npoints is one, will generate a random point in the allowed space.
+    If npoints is 2, will generate one point at the lowest bounds and 1 point at the highest bounds.
+    If npoints <= 2**ndims, will generate one point per vertices defined by 'bounds' until npoints are generated.
+    If npoints > 2**ndims, will generate one point at each vertex defined by 'bounds' and npoints - 2**ndims
+    random points in the allowed space.
+    """
+    if npoints <= 0:
+        raise ValueError("npoints must be greater than 0.")
     if npoints == 1:
         return bounds[:, 0] + step_size + np.random.uniform(size=(1, len(bounds))) * (bounds[:, 1] - bounds[:, 0])
     if npoints == 2:
@@ -699,8 +905,7 @@ def generate_init_states(bounds, npoints, step_size: Union[int, np.ndarray]):
     l1 = np.concatenate((zeros, ones))
     l2 = np.concatenate((ones, zeros))
     init_states_indexes = np.array(
-        list(distinct_combinations(l1, dim)) + list(distinct_combinations(l2, dim))[1:-1],
-        dtype=np.uint8
+        list(distinct_combinations(l1, dim)) + list(distinct_combinations(l2, dim))[1:-1], dtype=np.uint8
     )
     if npoints < init_states_indexes.shape[0]:
         to_keep = np.random.permutation(np.arange(0, init_states_indexes.shape[0]))

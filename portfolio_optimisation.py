@@ -138,7 +138,7 @@ def run(number_isins, do_plot, verbose=True):
         alpha=alpha,
         stopping_limit=0.001,
         npoints=2,
-        best_only=True
+        stop_at_first_found=True
     )
     tf = time() - t0
     fig_hist, _ = plot(hpath, step_size=10, weights_names=chosen_isins)
