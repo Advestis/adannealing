@@ -94,3 +94,39 @@ ann = Annealer(
 # Weights of the best local minimum and loss at the best local minimum
 w0, lmin, _, _, _, _ = ann.fit(npoints=n, stopping_limit=acceptance, stop_at_first_found=True)
 ```
+
+One can save the history of the learning by giving a path :
+
+```python
+from adannealing import Annealer
+
+Annealer.set_parallel()
+
+
+def loss_func_2d(w) -> float:
+    x = w[0]
+    y = w[1]
+    return (x - 5) * (x - 2) * (x - 1) * x + 10 * y ** 2
+
+
+bounds, acceptance, n = ((0, 5), (-1, 1)), 0.01, 5
+
+ann = Annealer(
+    loss=loss_func_2d,
+    weights_step_size=0.1,
+    bounds=bounds,
+    verbose=True
+)
+
+# Weights of the best local minimum and loss at the best local minimum
+w0, lmin, _, _, _, _ = ann.fit(
+    npoints=n,
+    stopping_limit=acceptance,
+    history_path="logs"
+)
+```
+
+In this example, calling **fit** will produce **n** directories in **logs**, each containing 2 files: **history.csv** and **returns.csv**.
+The first is the entier history of the fit, the second is only the iteration that found the local minimum.
+If only one point is asked (either by using *npoints=1* or *stop_at_first_found=True*), will produce **history.csv** and **returns.csv**
+directly in **logs**, and will delete the subfolders of the runs that did not produce the local minimum.
