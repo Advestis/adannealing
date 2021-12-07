@@ -1,4 +1,4 @@
-from typing import Union, Tuple
+from typing import Union, Tuple, Optional
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
@@ -126,11 +126,11 @@ class SamplePoint:
 
 def plot(
     sampler_path: Union[str, Path, Tuple[Sampler, Sampler]],
-    axisfontsize=15,
-    step_size=1,
+    axisfontsize: int = 15,
+    step_size: int = 1,
     nweights: int = 10,
-    weights_names: list = None,
-) -> plt.Figure:
+    weights_names: Optional[list] = None,
+) -> Union[Tuple[plt.Figure, list], None]:
     """From a directory containing 'result.csv' and 'history.csv', produces plots.
     Will produce the file "annealing.pdf" in 'sampler_path' and return the corresponding Figure object.
     If subfolders themselves containing 'result.csv' and 'history.csv' are present, will plot will call itself on them
@@ -139,6 +139,25 @@ def plot(
 
     'sampler_path' can also be a tuple of two Sampler objects, the first should then be the full history of the fit and
     the second the point of the local minimum.
+
+    Parameters
+    ----------
+        sampler_path: Union[str, Path, Tuple[Sampler, Sampler]]
+            Either the path to the directory containing the annealing result, or two Sampler objects
+        axisfontsize: int
+            default value = 15
+        step_size: int
+            plots every 'step_size' iterations instead of all of them (default value = 1)
+        nweights: int
+            Number of weights to display in plots (default value = 10)
+        weights_names: Optional[list]
+            List of names of weights, for axis labels. If None, weights are named using their position index.
+
+    Returns
+    -------
+    Union[Tuple[plt.Figure, list], None]
+        Returns None if the given directory does not contain history.csv or result.csv. Otherwise returns the created
+        figure and the weights and loss of the local minimum.
     """
 
     points = []
@@ -245,13 +264,13 @@ def plot(
 
         if len(points) > 0:
             for point in points:
-                ax2.scatter(point[1][iplot], point[2], s=10, c="blue")
+                ax2.scatter(point[0][iplot], point[1], s=10, c="blue")
         ax2.scatter(final_weights[iplot], final_loss, s=10, c="red")
 
         add_colorbar(fig, im, ax2, axisfontsize)
 
     fig.savefig(str(sampler_path / "annealing.pdf"))
-    return fig, [iterations, final_weights, final_loss]
+    return fig, [final_weights, final_loss]
 
 
 def add_colorbar(fig, im, ax, axisfontsize):

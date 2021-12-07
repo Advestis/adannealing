@@ -28,11 +28,13 @@ def clean_dir(path: Path) -> None:
     The directory must contain only files, not other directories. If at least one item is not a file, the function
     raises IsADirectoryError without deleting anything.
 
-    Parameters:
-        path: Path
+    Parameters
+    ----------
+    path: Path
 
-    Returns:
-        None
+    Returns
+    -------
+    None
     """
     t = time()
     if path.is_file():
@@ -55,11 +57,13 @@ def make_counter(iterable: Union[int, Collection[Any]]) -> Dict[int, str]:
     iterable (0, 1, ... , n) and values being 'i/n, xx, xx %' for each index matching 10%, 20%, ... 100% (rounded to the
     closest index), and None everywhere.
 
-    Parameters:
-        iterable: Union[int, Collection[Any]]
+    Parameters
+    ----------
+    iterable: Union[int, Collection[Any]]
 
-    Returns:
-        Dict[int, str]
+    Returns
+    -------
+    Dict[int, str]
     """
     if isinstance(iterable, int):
         nitems = iterable
@@ -85,13 +89,15 @@ def to_array(value: Union[int, float, list, np.ndarray, pd.Series, pd.DataFrame]
     'value' can not contain NaNs.
     Argument 'name' is used for better error messages only.
 
-    Parameters:
-        value: Union[int, float, list, np.ndarray, pd.Series, pd.DataFrame]
-        name: str
-            For better error messages
+    Parameters
+    ----------
+    value: Union[int, float, list, np.ndarray, pd.Series, pd.DataFrame]
+    name: str
+        For better error messages
 
-    Returns:
-        np.ndarray
+    Returns
+    -------
+    np.ndarray
     """
     if not isinstance(value, np.ndarray):
         if isinstance(value, (float, int)):
@@ -186,16 +192,18 @@ class Annealer:
 
         Else, will return the list of all fit results.
 
-        Parameters:
-            iterable: Callable[Annealer]
-            stop_at_first_found: bool
-            history_path: Union[None, str, Path]
+        Parameters
+        ----------
+        iterable: Callable[Annealer]
+        stop_at_first_found: bool
+        history_path: Union[None, str, Path]
 
-        Returns:
-            Union[
-                List[Tuple[np.ndarray, float, float, Sampler, Sampler, bool]],
-                Tuple[np.ndarray, float, float, Sampler, Sampler, bool],
-            ]
+        Returns
+        -------
+        Union[
+            List[Tuple[np.ndarray, float, float, Sampler, Sampler, bool]],
+            Tuple[np.ndarray, float, float, Sampler, Sampler, bool],
+        ]
         """
         if not cls.__PARALLEL:
             if not stop_at_first_found:
@@ -462,20 +470,22 @@ class Annealer:
         'max_attempts' unsuccessful attempts were made.
         In that case, raises ValueError.
 
-        Parameters:
-            ar_limit_low: float
-                Default value = 0.79
-            ar_limit_up: float
-                Default value = 0.81
-            max_attempts: int
-                Default value = 100
-            t1_i: float
-                Temperature of first fit attempt (Default value = 1e-5)
-            t2: float
-                Temperature of second fit attempt (Default value = 10)
+        Parameters
+        ----------
+        ar_limit_low: float
+            Default value = 0.79
+        ar_limit_up: float
+            Default value = 0.81
+        max_attempts: int
+            Default value = 100
+        t1_i: float
+            Temperature of first fit attempt (Default value = 1e-5)
+        t2: float
+            Temperature of second fit attempt (Default value = 10)
 
-        Returns:
-            float
+        Returns
+        -------
+        float
         """
 
         self._info(f"Looking for starting temperature...")
@@ -699,22 +709,24 @@ class Annealer:
         of the loss among the n_finishing_max previous losses.
 
         parameters
-            alpha: Optional[float]
-            temp_min: Optional[float]
-            temp_0: Optional[float]
-            iterations: Optional[float]
-            stopping_limit: Optional[float]
-            history_path: Optional[Union[str, Path]]
-            init_states: Optional[np.ndarray]
+        ----------
+        alpha: Optional[float]
+        temp_min: Optional[float]
+        temp_0: Optional[float]
+        iterations: Optional[float]
+        stopping_limit: Optional[float]
+        history_path: Optional[Union[str, Path]]
+        init_states: Optional[np.ndarray]
 
         All parameters are optional.
         Those which are not specified will default to the values specified in self.__init__.
 
-        Returns:
-            Tuple[np.ndarray, float, float, Sampler, Sampler, bool]
-            The weights of local minimum, its corresponding loss, the final acceptance ratio, the history of the fit in
-            the form of a Sampler object, another Sampler object containing only the point corresponding to the local
-            minimum, and True if the stopping limit was reached, else False.
+        Returns
+        -------
+        Tuple[np.ndarray, float, float, Sampler, Sampler, bool]
+        The weights of local minimum, its corresponding loss, the final acceptance ratio, the history of the fit in
+        the form of a Sampler object, another Sampler object containing only the point corresponding to the local
+        minimum, and True if the stopping limit was reached, else False.
 
         """
 
