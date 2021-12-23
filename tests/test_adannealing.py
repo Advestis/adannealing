@@ -406,22 +406,43 @@ def loss_func_2d(w) -> float:
 
 
 @pytest.mark.parametrize(
-    "init_states,bounds,acceptance",
+    "init_states,bounds,acceptance,schedule,alpha",
     [
-        (None, ((0, 5), (-1, 1)), None),
-        (None, ((0, 5), (-1, 1)), 0.01),
-        ((3.0, 0.5), None, None),
-        ((3.0, 0.5), None, 0.01),
-        ((3.0, 0.5), ((0, 5), (-1, 1)), None),
-        ((3.0, 0.5), ((0, 5), (-1, 1)), 0.01),
+        (None, ((0, 5), (-1, 1)), None, None, 0.85),
+        (None, ((0, 5), (-1, 1)), 0.01, None, 0.85),
+        ((3.0, 0.5), None, None, None, 0.85),
+        ((3.0, 0.5), None, 0.01, None, 0.85),
+        ((3.0, 0.5), ((0, 5), (-1, 1)), None, None, 0.85),
+        ((3.0, 0.5), ((0, 5), (-1, 1)), 0.01, None, 0.85),
+
+        (None, ((0, 5), (-1, 1)), None, "linear", 0.5),
+        (None, ((0, 5), (-1, 1)), 0.01, "linear", 0.5),
+        ((3.0, 0.5), None, None, "linear", 0.5),
+        ((3.0, 0.5), None, 0.01, "linear", 0.5),
+        ((3.0, 0.5), ((0, 5), (-1, 1)), None, "linear", 0.5),
+        ((3.0, 0.5), ((0, 5), (-1, 1)), 0.01, "linear", 0.5),
+
+        (None, ((0, 5), (-1, 1)), None, "logarithmic", 10),
+        (None, ((0, 5), (-1, 1)), 0.01, "logarithmic", 10),
+        ((3.0, 0.5), None, None, "logarithmic", 10),
+        ((3.0, 0.5), None, 0.01, "logarithmic", 10),
+        ((3.0, 0.5), ((0, 5), (-1, 1)), None, "logarithmic", 10),
+        ((3.0, 0.5), ((0, 5), (-1, 1)), 0.01, "logarithmic", 10),
+
+        (None, ((0, 5), (-1, 1)), None, "geometric", 0.85),
+        (None, ((0, 5), (-1, 1)), 0.01, "geometric", 0.85),
+        ((3.0, 0.5), None, None, "geometric", 0.85),
+        ((3.0, 0.5), None, 0.01, "geometric", 0.85),
+        ((3.0, 0.5), ((0, 5), (-1, 1)), None, "geometric", 0.85),
+        ((3.0, 0.5), ((0, 5), (-1, 1)), 0.01, "geometric", 0.85),
     ],
 )
-def test_fit_2d(init_states, bounds, acceptance):
+def test_fit_2d(init_states, bounds, acceptance, schedule, alpha):
     attempts = 0
     max_attempts = 5
     while attempts < max_attempts:
         ann = Annealer(loss=loss_func_2d, weights_step_size=0.1, init_states=init_states, bounds=bounds, verbose=True)
-        w0, lmin, _, _, _, _ = ann.fit(stopping_limit=acceptance)
+        w0, lmin, _, _, _, _ = ann.fit(stopping_limit=acceptance, alpha=alpha, cooling_schedule=schedule)
         print(w0, lmin)
         if (
             np.isclose(w0[0], 4.0565, rtol=5e-1, atol=5e-1)

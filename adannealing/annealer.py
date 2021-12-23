@@ -1,3 +1,4 @@
+import math
 import os
 from time import sleep, time
 
@@ -134,6 +135,7 @@ class Annealer:
 
     __PARALLEL = False
     __CPU_LIMIT = os.cpu_count()
+    __POSSIBLE_SCHEDULES = ["logarithmic", "linear", "geometric", "arithmetic-geometric"]
 
     @classmethod
     def set_parallel(cls):
@@ -273,16 +275,17 @@ class Annealer:
         self,
         loss: Callable,
         weights_step_size: Union[float, tuple, list, set, np.ndarray],
-        bounds: Union[tuple, list, set, np.ndarray] = None,
-        init_states: Union[tuple, list, set, np.ndarray] = None,
-        temp_0: float = None,
+        bounds: Optional[Union[tuple, list, set, np.ndarray]] = None,
+        init_states: Optional[Union[tuple, list, set, np.ndarray]] = None,
+        temp_0: Optional[float] = None,
         temp_min: float = 0,
         alpha: float = 0.85,
         iterations: int = 5000,
         verbose: bool = False,
-        stopping_limit: float = None,
-        history_path: str = None,
-        loss_kwargs: dict = None,
+        stopping_limit: Optional[float] = None,
+        cooling_schedule: str = "arithmetic-geometric",
+        history_path: Optional[str] = None,
+        loss_kwargs: Optional[dict] = None,
     ):
         """
         Parameters
@@ -314,6 +317,13 @@ class Annealer:
         stopping_limit: float
             If specified, the algorithm will stop once the loss has stabilised around differences of less than
             'stopping_limit' (see fit_one method).
+        cooling_schedule: str
+            The cooling schedule to use. Can be :
+            * 'logarithmic': T <- alpha / ln(1+T), asymptotically converges towards global minimum, but very slowly
+            * 'linear':  T <- T - alpha
+            * 'geometric': T <- T * alpha, like 'linear' converges quickly, but is not garanteed to find the best
+               solution. Should be close to it however.
+            * 'arithmetic-geometric' (default): T <- T * alpha + (T_min * (1 - alpha)), fast and precise
         history_path: str
             If specified, fit will be stored here. Must be an existing directory.
         loss_kwargs: dict
@@ -436,6 +446,12 @@ class Annealer:
             logger.warning("Iteration should not be less than 5000. Using 5000 instead.")
             self.iterations = 5000
 
+        if cooling_schedule is not None and not isinstance(cooling_schedule, str):
+            raise ValueError(f"cooling_schedule must be a str, got {type(cooling_schedule)}")
+        if cooling_schedule is not None and cooling_schedule not in Annealer.__POSSIBLE_SCHEDULES:
+            raise NotADirectoryError(f"Unknown cooling schedule '{cooling_schedule}'")
+        self.cooling_schedule = cooling_schedule
+
         if history_path is not None and not isinstance(history_path, str):
             raise ValueError(f"history_path must be a str, got {type(history_path)}")
         if history_path is not None and not Path(history_path).is_dir():
@@ -516,7 +532,7 @@ class Annealer:
             verbose=False,
             stopping_limit=None,
         )
-        _, _, acc_ratio_1, _, _, _ = ann.fit(temp_0=t1, iterations=1000, stopping_limit=None)
+        _, _, acc_ratio_1, _, _, _ = ann.fit(temp_0=t1, iterations=1000, stopping_limit=None, verbose=False)
 
         if ar_limit_low < acc_ratio_1 < ar_limit_up:
             # Lucky strike : t0 is already good !
@@ -531,7 +547,7 @@ class Annealer:
                         f"and {ar_limit_up} in less than {max_attempts} attempts"
                     )
                 t1 = t1 / 10
-                _, _, acc_ratio_1, _, _, _ = ann.fit(temp_0=t1, iterations=1000, stopping_limit=None)
+                _, _, acc_ratio_1, _, _, _ = ann.fit(temp_0=t1, iterations=1000, stopping_limit=None, verbose=False)
                 attempts += 1
 
             attempts = 0
@@ -541,10 +557,10 @@ class Annealer:
                         f"Could not find a temperature giving an acceptance ratio between {ar_limit_low} "
                         f"and {ar_limit_up} in less than {max_attempts} attempts"
                     )
-                _, _, acc_ratio_2, _, _, _ = ann.fit(temp_0=t2, stopping_limit=None)
-                self._info(f"Attempt {attempts}")
-                self._info(f"t1: {t1}, Acc. ratio : {acc_ratio_1} (fixed)")
-                self._info(f"t2: {t2}, Acc. ratio : {acc_ratio_2}")
+                _, _, acc_ratio_2, _, _, _ = ann.fit(temp_0=t2, stopping_limit=None, verbose=False)
+                self._debug(f"Attempt {attempts}")
+                self._debug(f"t1: {t1}, Acc. ratio : {acc_ratio_1} (fixed)")
+                self._debug(f"t2: {t2}, Acc. ratio : {acc_ratio_2}")
 
                 if ar_limit_low < acc_ratio_2 < ar_limit_up:
                     break
@@ -588,6 +604,8 @@ class Annealer:
         history_path: str = None,
         stop_at_first_found: bool = False,
         init_states: Union[tuple, list, set, np.ndarray] = None,
+        cooling_schedule: Optional[str] = None,
+        verbose: bool = True
     ) -> Union[
         List[Tuple[np.ndarray, float, float, Sampler, Sampler, bool]],
         Tuple[np.ndarray, float, float, Sampler, Sampler, bool],
@@ -604,16 +622,30 @@ class Annealer:
 
         if alpha is None:
             alpha = self.alpha
+
         if temp_min is None:
             temp_min = self.temp_min
+
         if temp_0 is None:
             temp_0 = self.temp_0
+
         if iterations is None:
             iterations = self.iterations
+
         if stopping_limit is None:
             stopping_limit = self.stopping_limit
+
         if history_path is None:
             history_path = self.history_path
+
+        if cooling_schedule is None:
+            cooling_schedule = self.cooling_schedule
+        elif cooling_schedule not in Annealer.__POSSIBLE_SCHEDULES:
+            raise ValueError(f"Unknown colling schedule '{cooling_schedule}'")
+
+        if verbose:
+            self._info(f"Fitting with cooling schedule '{cooling_schedule}'")
+
         if init_states is not None:
             if isinstance(init_states, int):
                 init_states = float(init_states)
@@ -637,6 +669,7 @@ class Annealer:
                 stopping_limit,
                 history_path,
                 self.init_states if init_states is None else init_states,
+                cooling_schedule
             )
         else:
             if self.bounds is None:
@@ -672,6 +705,46 @@ class Annealer:
             results = Annealer._fit_many(annealers, stop_at_first_found=stop_at_first_found, history_path=history_path)
             return results
 
+    def _get_next_temperature(self, temp: float, alpha: float, method: str, temp_min: Optional[float] = None) -> float:
+        if method == "logarithmic":
+            if alpha <= 0:
+                ValueError("If using logarithmic cooling schedule, alpha must be a positive number")
+            return self._logarithmic_cooling(temp, alpha)
+        elif method == "geometric":
+            if not 0 <= alpha <= 1:
+                ValueError("If using geometric cooling schedule, alpha must be a positive number lower than 1")
+            return self._geometric_cooling(temp, alpha)
+        elif method == "linear":
+            if alpha <= 0:
+                ValueError("If using linear cooling schedule, alpha must be a positive number")
+            return self._linear_cooling(temp, alpha)
+        elif method == "arithmetic-geometric":
+            if temp_min is None:
+                raise ValueError("Is using arithmetic-geometric cooling schedule, temp_min must be specified")
+            if not 0 <= alpha <= 1:
+                ValueError(
+                    "If using arithmetic-geometric cooling schedule, alpha must be a positive number lower than 1"
+                )
+            return self._arithmetic_geometric_cooling(temp, alpha, temp_min)
+        else:
+            ValueError(f"Unknown cooling schedule '{method}'")
+
+    @staticmethod
+    def _logarithmic_cooling(temp, alpha):
+        return alpha / (math.log(1 + temp))
+
+    @staticmethod
+    def _geometric_cooling(temp, alpha):
+        return temp * alpha
+
+    @staticmethod
+    def _linear_cooling(temp, alpha):
+        return max(temp - alpha, 0)
+
+    @staticmethod
+    def _arithmetic_geometric_cooling(temp, alpha, temp_min):
+        return temp * alpha + (temp_min * (1 - alpha))
+
     # TODO (pcotte) : implement more cooling schedule
     def _fit_one(
         self,
@@ -682,6 +755,7 @@ class Annealer:
         stopping_limit: Optional[float] = None,
         history_path: Optional[Union[str, Path]] = None,
         init_states: Optional[np.ndarray] = None,
+        cooling_schedule: Optional[str] = None
     ) -> Tuple[np.ndarray, float, float, Sampler, Sampler, bool]:
         """Try to find one local minimum of self.loss by running simulated annealing.
         Starts at 'temp_0', finishes at 'temp_min', in 'iterations' steps.
@@ -717,6 +791,7 @@ class Annealer:
         stopping_limit: Optional[float]
         history_path: Optional[Union[str, Path]]
         init_states: Optional[np.ndarray]
+        cooling_schedule: Optional[str]
 
         All parameters are optional.
         Those which are not specified will default to the values specified in self.__init__.
@@ -732,18 +807,27 @@ class Annealer:
 
         if alpha is None:
             alpha = self.alpha
+
         if temp_min is None:
             temp_min = self.temp_min
+
         if temp_0 is None:
             temp_0 = self.temp_0
+
         if iterations is None:
             iterations = self.iterations
+
         if stopping_limit is None:
             stopping_limit = self.stopping_limit
+
         if history_path is None:
             history_path = self.history_path
+
         if init_states is None:
             init_states = self.init_states
+
+        if cooling_schedule is None:
+            cooling_schedule = self.cooling_schedule
 
         if iterations < 5000 and stopping_limit is not None:
             logger.warning("Iteration should not be less than 5000 if using a stopping limit. Using 5000 instead.")
@@ -752,16 +836,12 @@ class Annealer:
         if stopping_limit is not None and not 0 < stopping_limit < 1:
             raise ValueError("'limit' should be between 0 and 1")
 
-        if alpha is None or not isinstance(alpha, float) or not (0 < alpha <= 1):
-            raise ValueError("'alpha' must be a float between 0 excluded and 1")
         if temp_min is None or temp_min < 0:
             raise ValueError("'tmin' must be a float greater than or equal to 0")
         if temp_0 is None or temp_0 <= temp_min:
             raise ValueError(f"'t0' must be a float greater than tmin, got {temp_0} <= {temp_min}")
         if iterations is None or not isinstance(iterations, int) or iterations <= 0:
             raise ValueError("Number of iterations must be an integer greater than 0")
-
-        b = temp_min * (1 - alpha)
 
         self._info(f"Starting temp : {temp_0}")
         curr = init_states.copy()
@@ -828,7 +908,8 @@ class Annealer:
             )
             history.append(sample)
 
-            temp_0 = temp_0 * alpha + b
+            temp_0 = self._get_next_temperature(temp_0, alpha, cooling_schedule, temp_min)
+
             if i_ in to_print and to_print[i_] is not None:
                 self._info(f"step {to_print[i_]}, Temperature : {temp_0} | acc. ratio so far : {acc_ratio}")
 
