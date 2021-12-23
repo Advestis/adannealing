@@ -24,6 +24,7 @@ def loss_func_2d(w) -> float:
     y = w[1]
     return (x - 5) * (x - 2) * (x - 1) * x + 10 * y ** 2
 
+
 #
 # # noinspection PyTypeChecker
 # @pytest.mark.parametrize(
@@ -406,6 +407,39 @@ def loss_func_2d(w) -> float:
 
 
 @pytest.mark.parametrize(
+    "init_states,bounds,acceptance",
+    [
+        (None, ((0, 5), (-1, 1)), None),
+        (None, ((0, 5), (-1, 1)), 0.01),
+        ((3.0, 0.5), None, None),
+        ((3.0, 0.5), None, 0.01),
+        ((3.0, 0.5), ((0, 5), (-1, 1)), None),
+        ((3.0, 0.5), ((0, 5), (-1, 1)), 0.01),
+    ],
+)
+def test_fit_2d_microcanonical(init_states, bounds, acceptance):
+    attempts = 0
+    max_attempts = 5
+    while attempts < max_attempts:
+        ann = Annealer(loss=loss_func_2d, weights_step_size=0.1, init_states=init_states, bounds=bounds, verbose=True)
+        w0, lmin, _, _, _, _ = ann.fit(stopping_limit=acceptance, annealing_type="microcanonical", iterations=10000)
+        print(w0, lmin)
+        if (
+            np.isclose(w0[0], 4.0565, rtol=5e-1, atol=5e-1)
+            and np.isclose(w0[1], 0, rtol=5e-1, atol=5e-1)
+            and np.isclose(lmin, -24.057, rtol=5e-2, atol=5e-2)
+        ) or (
+            np.isclose(w0[0], 0.39904, rtol=5e-1, atol=5e-1)
+            and np.isclose(w0[1], 0, rtol=5e-1, atol=5e-1)
+            and np.isclose(lmin, -1.7664, rtol=5e-2, atol=5e-2)
+        ):
+            break
+        attempts += 1
+    if attempts == max_attempts:
+        raise AssertionError("Fit failed")
+
+
+@pytest.mark.parametrize(
     "init_states,bounds,acceptance,schedule,alpha",
     [
         (None, ((0, 5), (-1, 1)), None, None, 0.85),
@@ -414,21 +448,18 @@ def loss_func_2d(w) -> float:
         ((3.0, 0.5), None, 0.01, None, 0.85),
         ((3.0, 0.5), ((0, 5), (-1, 1)), None, None, 0.85),
         ((3.0, 0.5), ((0, 5), (-1, 1)), 0.01, None, 0.85),
-
         (None, ((0, 5), (-1, 1)), None, "linear", 0.5),
         (None, ((0, 5), (-1, 1)), 0.01, "linear", 0.5),
         ((3.0, 0.5), None, None, "linear", 0.5),
         ((3.0, 0.5), None, 0.01, "linear", 0.5),
         ((3.0, 0.5), ((0, 5), (-1, 1)), None, "linear", 0.5),
         ((3.0, 0.5), ((0, 5), (-1, 1)), 0.01, "linear", 0.5),
-
-        (None, ((0, 5), (-1, 1)), None, "logarithmic", 10),
-        (None, ((0, 5), (-1, 1)), 0.01, "logarithmic", 10),
-        ((3.0, 0.5), None, None, "logarithmic", 10),
-        ((3.0, 0.5), None, 0.01, "logarithmic", 10),
-        ((3.0, 0.5), ((0, 5), (-1, 1)), None, "logarithmic", 10),
-        ((3.0, 0.5), ((0, 5), (-1, 1)), 0.01, "logarithmic", 10),
-
+        (None, ((0, 5), (-1, 1)), None, "logarithmic", 1),
+        (None, ((0, 5), (-1, 1)), 0.01, "logarithmic", 1),
+        ((3.0, 0.5), None, None, "logarithmic", 1),
+        ((3.0, 0.5), None, 0.01, "logarithmic", 1),
+        ((3.0, 0.5), ((0, 5), (-1, 1)), None, "logarithmic", 1),
+        ((3.0, 0.5), ((0, 5), (-1, 1)), 0.01, "logarithmic", 1),
         (None, ((0, 5), (-1, 1)), None, "geometric", 0.85),
         (None, ((0, 5), (-1, 1)), 0.01, "geometric", 0.85),
         ((3.0, 0.5), None, None, "geometric", 0.85),
@@ -442,7 +473,12 @@ def test_fit_2d(init_states, bounds, acceptance, schedule, alpha):
     max_attempts = 5
     while attempts < max_attempts:
         ann = Annealer(loss=loss_func_2d, weights_step_size=0.1, init_states=init_states, bounds=bounds, verbose=True)
-        w0, lmin, _, _, _, _ = ann.fit(stopping_limit=acceptance, alpha=alpha, cooling_schedule=schedule)
+        w0, lmin, _, _, _, _ = ann.fit(
+            stopping_limit=acceptance,
+            alpha=alpha,
+            cooling_schedule=schedule,
+            iterations=5000 if schedule != "logarithmic" else 10000,
+        )
         print(w0, lmin)
         if (
             np.isclose(w0[0], 4.0565, rtol=5e-1, atol=5e-1)

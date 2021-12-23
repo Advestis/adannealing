@@ -7,6 +7,7 @@ from pathlib import Path
 from matplotlib.colors import LogNorm
 from matplotlib.gridspec import GridSpec
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -18,13 +19,15 @@ def make_segments(x, y):
 
 class Sampler:
     """A class used by Annealer to keep track of its progress."""
+
     @staticmethod
     def _manage_data(data: pd.DataFrame) -> pd.DataFrame:
         def _handle_weights(weights: str) -> list:
             while "  " in weights:
                 weights = weights.replace("  ", " ")
             return ast.literal_eval(weights.replace(" ", ",").replace("[,", "["))
-        expected_columns = ["weights", "iteration", "acc_ratio", "accepted", "loss", "temp"]
+
+        expected_columns = ["weights", "iteration", "acc_ratio", "accepted", "loss", "parameter"]
         for col in expected_columns:
             if col not in data:
                 raise IndexError(f"Missing columns '{col}'")
@@ -61,8 +64,8 @@ class Sampler:
         if self.points is None:
             raise ValueError("Sampler was initialised with an outside history : nothing to process.")
         self._data = pd.DataFrame(
-            [[p.weights, p.iteration, p.acc_ratio, p.accepted, p.loss, p.temp] for p in self.points],
-            columns=["weights", "iteration", "acc_ratio", "accepted", "loss", "temp"],
+            [[p.weights, p.iteration, p.acc_ratio, p.accepted, p.loss, p.parameter] for p in self.points],
+            columns=["weights", "iteration", "acc_ratio", "accepted", "loss", "parameter"],
         )
 
     @property
@@ -90,10 +93,10 @@ class Sampler:
         return self._data.loc[:, "loss"]
 
     @property
-    def temps(self):
+    def parameters(self):
         if self._data.empty or len(self._data.index) != len(self):
             self._process()
-        return self._data.loc[:, "temp"]
+        return self._data.loc[:, "parameter"]
 
     @property
     def iterations(self):
@@ -111,7 +114,17 @@ class Sampler:
 class SamplePoint:
     """A class used by Annealer to keep track of its progress."""
 
-    def __init__(self, weights, iteration, acc_ratio, accepted, loss, temp, sampler: Union[None, Sampler] = None):
+    def __init__(
+        self,
+        weights,
+        iteration,
+        acc_ratio,
+        accepted,
+        loss,
+        temp=None,
+        demon_loss=None,
+        sampler: Union[None, Sampler] = None,
+    ):
         if sampler is not None and not isinstance(sampler, Sampler):
             raise TypeError(f"Sampler must be of type 'Sampler', got {type(sampler)}")
         self.weights = weights
@@ -120,8 +133,28 @@ class SamplePoint:
         self.accepted = accepted
         self.loss = loss
         self.temp = temp
+        self.demon_loss = demon_loss
+
+        if self.demon_loss is None and self.temp is None:
+            raise ValueError("One and only one of temp and demon_loss must be specified")
+        if self.demon_loss is not None and self.temp is not None:
+            raise ValueError("One and only one of temp and demon_loss must be specified")
+
         if sampler is not None:
             sampler.append(self)
+
+    @property
+    def parameter(self):
+
+        if self.demon_loss is None and self.temp is None:
+            raise ValueError("One and only one of temp and demon_loss must be specified")
+        if self.demon_loss is not None and self.temp is not None:
+            raise ValueError("One and only one of temp and demon_loss must be specified")
+
+        if self.temp is not None:
+            return self.temp
+        else:
+            return self.demon_loss
 
 
 def plot(
@@ -204,7 +237,7 @@ def plot(
     losses = sampler.losses.iloc[::step_size].values
     iterations = sampler.iterations.values[::step_size]
     acc_ratios = sampler.acc_ratios.iloc[::step_size].values
-    temps = sampler.temps.values[::step_size]
+    temps = sampler.parameters.values[::step_size]
 
     final_weights = final_sampler.weights.iloc[0, :nweights].values
     final_loss = final_sampler.losses.values
@@ -228,9 +261,7 @@ def plot(
     first_ax.scatter(iterations, temps, c=temps, cmap=cmap, norm=LogNorm(), s=7)
     second_ax.scatter(iterations, acc_ratios, c=temps, cmap=cmap, norm=LogNorm(), s=7)
     im = third_ax.scatter(iterations, losses, c=temps, cmap=cmap, norm=LogNorm(), s=7)
-    third_ax.plot(
-        [iterations[0], iterations[-1]], [final_loss[-1], final_loss[-1]], c="black"
-    )
+    third_ax.plot([iterations[0], iterations[-1]], [final_loss[-1], final_loss[-1]], c="black")
     third_ax.text(iterations[0], final_loss[-1], s=f"{round(final_loss[-1], 3)}", c="black")
     fig.subplots_adjust(right=0.8)
 
@@ -256,9 +287,7 @@ def plot(
             cmap=cmap,
             norm=LogNorm(),
         )
-        ax1.plot(
-            [iterations[0], iterations[-1]], [final_weights[iplot], final_weights[iplot]], c="black"
-        )
+        ax1.plot([iterations[0], iterations[-1]], [final_weights[iplot], final_weights[iplot]], c="black")
         ax1.text(iterations[0], final_weights[iplot], s=f"{round(final_weights[iplot], 3)}", c="black")
         ax2.scatter(weights[:, iplot], losses, s=7, c=temps, cmap=cmap, norm=LogNorm())
 
