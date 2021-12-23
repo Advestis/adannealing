@@ -844,6 +844,7 @@ class Annealer:
             raise ValueError("Number of iterations must be an integer greater than 0")
 
         self._info(f"Starting temp : {temp_0}")
+        temp = temp_0
         curr = init_states.copy()
         curr_loss = self.loss(curr.T, **self.loss_kwargs)
         while hasattr(curr_loss, "__len__") and len(curr_loss) == 1:
@@ -879,21 +880,21 @@ class Annealer:
             if not isinstance(candidate_loss, (int, float)):
                 raise ValueError(f"Return of loss function should be a number, got {type(candidate_loss)}")
 
-            accepted = candidate_loss < curr_loss
+            diff = candidate_loss - curr_loss
+            accepted = diff < 0
             if accepted:
                 points_accepted = points_accepted + 1
                 prev_loss = curr_loss
                 curr, curr_loss = candidate, candidate_loss
-                self._debug(f"Accepted : {i_} f({curr}) = {curr_loss}")
+                self._debug(f"Accepted : {i_} f({candidate}) = {candidate_loss}")
             else:
-                diff = candidate_loss - curr_loss
-                metropolis = np.exp(-diff / temp_0)
+                metropolis = np.exp(-diff / temp)
                 if np.random.uniform() < metropolis:
                     accepted = True
                     points_accepted = points_accepted + 1
                     prev_loss = curr_loss
                     curr, curr_loss = candidate, candidate_loss
-                    self._debug(f"Accepted : {i_} f({curr}) = {curr_loss}")
+                    self._debug(f"Accepted : {i_} f({candidate}) = {candidate_loss}")
                 else:
                     self._debug(f"Rejected :{i_} f({candidate}) = {candidate_loss}")
 
@@ -903,15 +904,15 @@ class Annealer:
                 iteration=i_,
                 accepted=accepted,
                 loss=candidate_loss,
-                temp=temp_0,
+                temp=temp,
                 acc_ratio=acc_ratio,
             )
             history.append(sample)
 
-            temp_0 = self._get_next_temperature(temp_0, alpha, cooling_schedule, temp_min)
+            temp = self._get_next_temperature(temp, alpha, cooling_schedule, temp_min)
 
             if i_ in to_print and to_print[i_] is not None:
-                self._info(f"step {to_print[i_]}, Temperature : {temp_0} | acc. ratio so far : {acc_ratio}")
+                self._info(f"step {to_print[i_]}, Temperature : {temp} | acc. ratio so far : {acc_ratio}")
 
             """
             Checks stopping conditions
@@ -940,7 +941,7 @@ class Annealer:
                     n_finishing = 0
                     finishing_history.clean()
 
-        self._info(f"Final temp : {temp_0}")
+        self._info(f"Final temp : {temp}")
         self._info(f"Acc. ratio : {acc_ratio}")
 
         if not finished and not history.data.empty:
