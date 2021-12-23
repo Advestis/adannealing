@@ -745,7 +745,7 @@ class Annealer:
     def _arithmetic_geometric_cooling(temp, alpha, temp_min):
         return temp * alpha + (temp_min * (1 - alpha))
 
-    # TODO (pcotte) : implement more cooling schedule
+    # TODO (pcotte) : implement Microcanonical annealing
     def _fit_one(
         self,
         alpha: Optional[float] = None,
