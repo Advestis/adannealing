@@ -75,17 +75,24 @@ version = None
 if git_installed == 0:
     try:
         version = get_version()
-        with open(str(workdir / "VERSION.txt"), "w") as vfile:
-            vfile.write(version)
+        with open(str(workdir / name / "_version.py"), "w") as vfile:
+            vfile.write(f"__version__ = \"{version}\"")
     except FileNotFoundError as e:
         pass
 if version is None:
     # noinspection PyBroadException
     try:
-        with open(str(workdir / "VERSION.txt"), "r") as vfile:
-            version = vfile.readline()
+        with open(str(workdir / name / "_version.py"), "r") as vfile:
+            version = vfile.readline().split("= ")[-1]
     except Exception:
         version = None
+
+if "v" in version:
+    version = version.replace("v", "")
+if "-" in version:
+    version = version.replace("-", "")
+if "\"" in version:
+    version = version.replace("\"", "")
 
 
 if __name__ == "__main__":
@@ -98,12 +105,12 @@ if __name__ == "__main__":
         version=version,
         author=author,
         author_email=author_email,
+        url=url,
+        packages=find_packages(exclude=("tests*",)),
         include_package_data=True,
         description=description,
         long_description=long_description,
         long_description_content_type="text/markdown",
-        url=url,
-        packages=find_packages(),
         install_requires=requirements,
         package_data={"": ["*", ".*"]},
         classifiers=[
@@ -112,5 +119,5 @@ if __name__ == "__main__":
             "Operating System :: OS Independent",
             "Development Status :: 5 - Production/Stable"
         ],
-        python_requires='>=3.8',
+        python_requires='>=3.7',
     )
