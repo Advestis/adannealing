@@ -31,11 +31,16 @@ jobs:
 
       - name: build
         run: |
-          make install
+          pip install -U pip
+          pip install .
           python setup.py sdist
 
       - name: make doc
-        run: make doc
+        run: |
+          pip install pdoc3
+          pdoc --html adannealing -o docs
+          mv docs/adannealing/* docs/
+          rm -r docs/adannealing
 
       - name: commit doc
         run: |
@@ -52,14 +57,13 @@ jobs:
           branch: "gh-pages"
           force: true
 
-#      - name: topypi
-#        if: ${{ matrix.python-version == 3.8 }}
-#        uses: pypa/gh-action-pypi-publish@master
-#        with:
-#          user: ${{ secrets.ORG_PYPI_LOGIN }}
-#          password: ${{ secrets.ORG_PYPI_PASSWD }}
-#          skip_existing: true
-#          verbose: true
+      - name: topypi
+        uses: pypa/gh-action-pypi-publish@master
+        with:
+          user: ${{ secrets.ORG_PYPI_LOGIN }}
+          password: ${{ secrets.ORG_PYPI_PASSWD }}
+          skip_existing: true
+          verbose: true
 
 #      - name: todocker
 #        if: ${{ matrix.python-version == 3.8 }}
