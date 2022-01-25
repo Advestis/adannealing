@@ -10,7 +10,7 @@ jobs:
     if: "!contains(github.event.head_commit.message, 'VERSION-SKIP-CI')"
     strategy:
       matrix:
-        python-version: [ 3.8 ]
+        python-version: [ 3.9 ]
     steps:
 
       # extract repo name
@@ -33,24 +33,6 @@ jobs:
         run: |
           make install
           python setup.py sdist
-
-      - name: commit version
-        run: |
-          git add VERSION.txt
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add .
-          git commit -m "VERSION-SKIP-CI"
-        continue-on-error: true
-
-      - name: Push version
-        if: ${{ matrix.python-version == 3.8 }}
-        uses: ad-m/github-push-action@master
-        with:
-          github_token: ${{ secrets.ORG_TOKEN_CICD }}
-          branch: master
-          force: true
-        continue-on-error: true
 
       - name: make doc
         run: make doc
