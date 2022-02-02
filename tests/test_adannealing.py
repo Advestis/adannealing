@@ -1,12 +1,5 @@
 import pytest
-import adutils
-
-adutils.init("logger")
-from adutils import setup_logger
-
-setup_logger()
 import numpy as np
-
 from adannealing import Annealer
 
 

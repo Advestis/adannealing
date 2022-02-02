@@ -14,9 +14,6 @@ import pandas as pd
 from pathlib import Path
 import logging
 
-import adutils
-
-adutils.init("logger")
 from adutils import setup_logger
 from adlearn.engine import get_engine
 
