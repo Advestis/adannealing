@@ -15,9 +15,6 @@ os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 
-import adutils
-
-adutils.init("logger")
 from adutils import setup_logger
 
 setup_logger()
