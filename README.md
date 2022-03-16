@@ -6,7 +6,7 @@ permalink: /docs/index.html
 
 # AdAnnealing
 
-A package doing simulated and quantum annealing
+A package doing simulated annealing
 
 ## Installation
 
