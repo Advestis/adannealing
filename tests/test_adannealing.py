@@ -346,8 +346,7 @@ def test_init(
                 iterations,
                 verbose,
             )
-        print(e.value.args, type(e.value.args), dir(e.value.args))
-        assert expected_error_message in e.value.message
+        assert expected_error_message in e.value.args[0]
     else:
         ann = Annealer(
             loss,
