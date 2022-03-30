@@ -77,32 +77,6 @@ def loss_func_2d(w) -> float:
             None,
             None,
             None,
-            None,
-            None,
-            None,
-            None,
-            TypeError,
-            "'alpha' can not be None",
-        ),
-        (
-            loss_func,
-            np.array([1]),
-            None,
-            None,
-            None,
-            None,
-            0.85,
-            None,
-            None,
-            TypeError,
-            "'temp_min' can not be None",
-        ),
-        (
-            loss_func,
-            np.array([1]),
-            None,
-            None,
-            None,
             0,
             0.85,
             None,
@@ -346,7 +320,7 @@ def test_init(
                 iterations,
                 verbose,
             )
-        assert expected_error_message in str(e.value)
+        assert expected_error_message in e.value.args[0]
     else:
         ann = Annealer(
             loss,

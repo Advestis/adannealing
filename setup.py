@@ -81,11 +81,8 @@ if git_installed == 0:
         pass
 if version is None:
     # noinspection PyBroadException
-    try:
-        with open(str(workdir / name / "_version.py"), "r") as vfile:
-            version = vfile.readline().split("= ")[-1]
-    except Exception:
-        version = None
+    with open(str(workdir / name / "_version.py"), "r") as vfile:
+        version = vfile.readline().split("= ")[-1]
 
 if "v" in version:
     version = version.replace("v", "")
@@ -114,9 +111,11 @@ if __name__ == "__main__":
         install_requires=requirements,
         package_data={"": ["*", ".*"]},
         classifiers=[
-            "Programming Language :: Python :: 3",
+            "Programming Language :: Python :: 3.7",
+            "Programming Language :: Python :: 3.8",
+            "Programming Language :: Python :: 3.9",
             "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
-            "Operating System :: OS Independent",
+            "Operating System :: Unix",
             "Development Status :: 5 - Production/Stable"
         ],
         python_requires='>=3.7',

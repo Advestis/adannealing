@@ -420,7 +420,7 @@ class Annealer:
             if not isinstance(temp_0, float):
                 raise TypeError(f"'temp_0' must be a float, got {type(temp_0)} instead.")
             if np.isnan(temp_0):
-                raise ValueError("'temp_0' can ont be NAN")
+                raise ValueError("'temp_0' can not be NAN")
         self.temp_0 = temp_0
 
         if temp_min is not None:
