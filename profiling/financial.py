@@ -19,9 +19,14 @@ def load_financial_configurations(path):
     date = configs["date"]
     common_fee = configs["common_fee"]
     overall_risk_coeff = configs["overall_risk_coeff"]
+    overall_sparse_coeff = (configs["overall_sparse_coeff"],)
+    overall_norm_coeff = (configs["overall_norm_coeff"],)
     n_iterations = configs["n_iterations"]
     step_size = configs["step_size"]
     alpha = configs["alpha"]
+    sparsity = configs["sparsity"]
+    desired_norm = configs["desired_norm"]
+    continous_window = bool(eval(configs["continous_window"]))
 
     date_start = configs["date_start"]
     date_end = configs["date_end"]
@@ -29,7 +34,21 @@ def load_financial_configurations(path):
 
     all_prices = all_prices[all_prices.index >= pd.Timestamp(date_start)]
     all_prices = all_prices[all_prices.index <= pd.Timestamp(date_end)]
-    return path_save_images, date, common_fee, overall_risk_coeff, n_iterations, step_size, alpha, all_prices
+    return (
+        path_save_images,
+        date,
+        common_fee,
+        overall_risk_coeff,
+        overall_sparse_coeff,
+        overall_norm_coeff,
+        sparsity,
+        desired_norm,
+        continous_window,
+        n_iterations,
+        step_size,
+        alpha,
+        all_prices,
+    )
 
 
 def loss_portfolio_score_based():
@@ -50,8 +69,9 @@ def loss_portfolio_mean_var(
     eps_np: np.array,
     cov_np: np.array,
     sparsity: float,
-    limits: np.array,
+    limits: tuple,
     desired_norm: float,
+    continous_window: bool,
     n: int,
     by_component: bool = False,
 ) -> float:
@@ -66,8 +86,29 @@ def loss_portfolio_mean_var(
         assert r_np.shape == common_shape
         assert eps_np.shape == common_shape
         assert cov_np.shape == (n, n)
-        assert limits.shape == (n, 2)
-        PENALTY = lambda w: np.prod([normed_box(w, point_low, point_high) for (point_low, point_high) in limits])
+        assert len(limits) == n
+
+        not_none = np.where([lim != (None, None) for lim in limits])[0]
+        if len(not_none) > 0:
+            if continous_window:
+                PENALTY = lambda w: np.prod(
+                    [
+                        continuous_constraint(w[i], point_low, point_high)
+                        for i, (point_low, point_high) in enumerate(limits)
+                        if i in not_none
+                    ]
+                )
+            else:
+                PENALTY = lambda w: np.prod(
+                    [
+                        non_continuous_constraint(w[i], point_low, point_high)
+                        for i, (point_low, point_high) in enumerate(limits)
+                        if i in not_none
+                    ]
+                )
+
+        else:
+            PENALTY = lambda w: 0.0
 
     return_term = r_np.T.dot(wt_np)
     risk_term = 0.5 * wt_np.T.dot(cov_np.dot(wt_np))
@@ -89,24 +130,34 @@ def loss_portfolio_mean_var(
     return loss[0][0]
 
 
-def normed_box(x, point_low, point_high):
+def continuous_constraint(x, point_low, point_high):
+
+    val = 0.
     if point_low is not None and point_high is not None:
         eps = np.abs(point_low - point_high) / 100.0
-        return box(x, point_low, point_high, 5.0 / eps, 1, 0)
+        sharpness = 5.0 / eps
 
-    elif point_low is None and point_high is None:
-        return 0.0
+    else:
+        sharpness = 500.
+
+    if point_low is not None:
+        val += wall(-1., x, point_low, sharpness, 1., 1.)
+
+    if point_high is not None:
+        val += wall(+1., x, point_high, sharpness, 1., 1.)
+
+    return val
 
 
-def box(x, point_low, point_high, sharpness, height, speed):
+def non_continuous_constraint(x, point_low, point_high):
 
-    if point_low >= point_high:
-        raise RuntimeError("Box functon: lower boundary is larger-equal to the upper boundary.")
+    val = 0.
 
-    l_ = -1.0
-    r = +1.0
-    val = wall(l_, x, point_low, sharpness, height, speed)
-    val = val + wall(r, x, point_high, sharpness, height, speed)
+    if point_low is not None and x < point_low:
+        val += (point_low-x)*10.
+
+    if point_high is not None and x > point_high:
+        val += (x-point_high)*10.
 
     return val
 

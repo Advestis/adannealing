@@ -47,6 +47,9 @@ logger = logging.getLogger(__name__)
     overall_risk_coeff,
     overall_sparse_coeff,
     overall_norm_coeff,
+    continous_window,
+    sparsity,
+    desired_norm,
     n_iterations,
     step_size,
     alpha,
@@ -100,12 +103,17 @@ def run(number_isins, do_plot, verbose=True):
         risk_coeff=overall_risk_coeff,
         sparse_coeff=0.,
         norm_coeff=0.,
+        sparsity=sparsity,
+        limits=tuple((None, None) for _ in range(len(chosen_isins))),
+        desired_norm=desired_norm,
         eps_np=np.zeros_like(fees.to_numpy()),
         cov_np=selected_cov.to_numpy(),
+        continous_window=continous_window,
         n=len(chosen_isins),
         by_component=True,
     )
 
+    # limits : may be to complex to put in run_configs.json
     def objective(w):
         return loss_portfolio_mean_var(
             wt_np=w,
@@ -114,8 +122,12 @@ def run(number_isins, do_plot, verbose=True):
             risk_coeff=overall_risk_coeff,
             sparse_coeff=overall_sparse_coeff,
             norm_coeff=overall_norm_coeff,
+            sparsity=sparsity,
+            limits=tuple((-1., 1.) for _ in range(len(chosen_isins))),
+            desired_norm=desired_norm,
             eps_np=fees.to_numpy(),
             cov_np=selected_cov.to_numpy(),
+            continous_window=True,
             n=len(chosen_isins),
             by_component=False,
         )
