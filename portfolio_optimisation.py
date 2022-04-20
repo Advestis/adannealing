@@ -25,11 +25,12 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import logging
 import argparse
-import matplotlib.pyplot as plt
-from adlearn.engine import get_engine
+from adlearn.engine import Engine
 from time import time
 
-engine = get_engine(kind="multiproc", context="spawn", print_percent=None, max_cpus=10)
+engine = Engine(
+            kind='multiproc'
+        )
 
 from adannealing import Annealer, plot
 from profiling.financial import load_financial_configurations, analy_optim_mean_var, loss_portfolio_mean_var
@@ -44,6 +45,8 @@ logger = logging.getLogger(__name__)
     date,
     common_fee,
     overall_risk_coeff,
+    overall_sparse_coeff,
+    overall_norm_coeff,
     n_iterations,
     step_size,
     alpha,
@@ -76,6 +79,8 @@ def run(number_isins, do_plot, verbose=True):
         data=np.full(shape=(len(chosen_isins), 1), fill_value=(1.0 / number_isins)), index=[chosen_isins]
     )
 
+    # In this branch, as I am introducing deviations from solvable case in the loss,
+    # this analytic solution refers to the problem with only returns and risk terms
     analy_opt = analy_optim_mean_var(
         r_np=selected_returns.loc[date].to_numpy().reshape((number_isins, 1)),
         risk_coeff=overall_risk_coeff,
@@ -85,13 +90,17 @@ def run(number_isins, do_plot, verbose=True):
     )
 
     # loss value at optimum
+    # In this branch, as I am introducing deviations from solvable case in the loss,
+    # this analytic solution refers to the problem with only returns and risk terms
     fees = pd.DataFrame(data=np.full(shape=(number_isins, 1), fill_value=common_fee), index=[chosen_isins])
     loss_at_min = loss_portfolio_mean_var(
         wt_np=analy_opt,
         wt_1_np=weights_day_before.to_numpy(),
         r_np=selected_returns.loc[date].to_numpy().reshape((number_isins, 1)),
         risk_coeff=overall_risk_coeff,
-        eps_np=fees.to_numpy(),
+        sparse_coeff=0.,
+        norm_coeff=0.,
+        eps_np=np.zeros_like(fees.to_numpy()),
         cov_np=selected_cov.to_numpy(),
         n=len(chosen_isins),
         by_component=True,
@@ -103,6 +112,8 @@ def run(number_isins, do_plot, verbose=True):
             wt_1_np=weights_day_before.to_numpy(),
             r_np=selected_returns.loc[date].to_numpy().reshape((number_isins, 1)),
             risk_coeff=overall_risk_coeff,
+            sparse_coeff=overall_sparse_coeff,
+            norm_coeff=overall_norm_coeff,
             eps_np=fees.to_numpy(),
             cov_np=selected_cov.to_numpy(),
             n=len(chosen_isins),

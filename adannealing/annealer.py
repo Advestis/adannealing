@@ -1059,7 +1059,7 @@ class Annealer:
                 curr, curr_loss = candidate, candidate_loss
                 self._debug(f"Accepted : {i_} f({candidate}) = {candidate_loss}")
             else:
-                metropolis = np.exp(-diff / temp)
+                metropolis = np.exp(-diff / math.abs(curr_loss) / temp)
                 if np.random.uniform() < metropolis:
                     accepted = True
                     points_accepted = points_accepted + 1

@@ -36,36 +36,66 @@ def loss_portfolio_score_based():
     pass
 
 
+FIRST_CALL = True
+PENALTY = None
+
+
 def loss_portfolio_mean_var(
     wt_np: np.array,
     wt_1_np: np.array,
     r_np: np.array,
     risk_coeff: float,
+    sparse_coeff: float,
+    norm_coeff: float,
     eps_np: np.array,
     cov_np: np.array,
+    sparsity: float,
+    limits: np.array,
+    desired_norm: float,
     n: int,
     by_component: bool = False,
 ) -> float:
 
-    common_shape = (n, 1)
-    assert wt_np.shape == common_shape
-    assert wt_1_np.shape == common_shape
-    assert r_np.shape == common_shape
-    assert eps_np.shape == common_shape
-    assert cov_np.shape == (n, n)
+    global FIRST_CALL
+    global NORMED_BOX
+
+    if FIRST_CALL:
+        common_shape = (n, 1)
+        assert wt_np.shape == common_shape
+        assert wt_1_np.shape == common_shape
+        assert r_np.shape == common_shape
+        assert eps_np.shape == common_shape
+        assert cov_np.shape == (n, n)
+        assert limits.shape == (n, 2)
+        PENALTY = lambda w: np.prod([normed_box(w, point_low, point_high) for (point_low, point_high) in limits])
 
     return_term = r_np.T.dot(wt_np)
     risk_term = 0.5 * wt_np.T.dot(cov_np.dot(wt_np))
     fees_term = np.abs(wt_np - wt_1_np).T.dot(eps_np)
+    sparse_term = np.linalg.norm(wt_np) ** 2 - np.linalg.norm(wt_np, ord=1) ** 2 * sparsity
+    penalty = PENALTY(wt_np)
+    norm = np.array(np.linalg.norm(wt_np, ord=1) - desired_norm)
 
     if by_component:
         logger.info(f" [LOSS] return term : {return_term}")
         logger.info(f" [LOSS] risk term : {risk_term}")
         logger.info(f" [LOSS] fees term : {fees_term}")
+        logger.info(f" [LOSS] sparsity term : {sparse_term}")
+        logger.info(f" [LOSS] penalty term : {penalty}")
+        logger.info(f" [LOSS] norm term : {norm}")
 
-    loss = -return_term + risk_term * risk_coeff + fees_term
+    loss = -return_term + risk_term * risk_coeff + fees_term + sparse_coeff * sparse_term + penalty + norm * norm_coeff
 
     return loss[0][0]
+
+
+def normed_box(x, point_low, point_high):
+    if point_low is not None and point_high is not None:
+        eps = np.abs(point_low - point_high) / 100.0
+        return box(x, point_low, point_high, 5.0 / eps, 1, 0)
+
+    elif point_low is None and point_high is None:
+        return 0.0
 
 
 def box(x, point_low, point_high, sharpness, height, speed):
