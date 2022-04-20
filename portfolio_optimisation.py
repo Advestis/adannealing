@@ -28,12 +28,15 @@ import argparse
 from adlearn.engine import Engine
 from time import time
 
-engine = Engine(
-            kind='multiproc'
-        )
+engine = Engine(kind="multiproc")
 
 from adannealing import Annealer, plot
-from profiling.financial import load_financial_configurations, analy_optim_mean_var, loss_portfolio_mean_var
+from profiling.financial import (
+    load_financial_configurations,
+    analy_optim_mean_var,
+    loss_portfolio_mean_var,
+    LossPortfolioMeanVar,
+)
 
 Annealer.set_cpu_limit(1)
 
@@ -47,9 +50,9 @@ logger = logging.getLogger(__name__)
     overall_risk_coeff,
     overall_sparse_coeff,
     overall_norm_coeff,
-    continous_window,
     sparsity,
     desired_norm,
+    continous_window,
     n_iterations,
     step_size,
     alpha,
@@ -89,20 +92,21 @@ def run(number_isins, do_plot, verbose=True):
         risk_coeff=overall_risk_coeff,
         cov_np=selected_cov.to_numpy(),
         n=len(chosen_isins),
-        cut=1e-8
+        cut=1e-8,
     )
 
     # loss value at optimum
     # In this branch, as I am introducing deviations from solvable case in the loss,
     # this analytic solution refers to the problem with only returns and risk terms
     fees = pd.DataFrame(data=np.full(shape=(number_isins, 1), fill_value=common_fee), index=[chosen_isins])
+
     loss_at_min = loss_portfolio_mean_var(
         wt_np=analy_opt,
         wt_1_np=weights_day_before.to_numpy(),
         r_np=selected_returns.loc[date].to_numpy().reshape((number_isins, 1)),
         risk_coeff=overall_risk_coeff,
-        sparse_coeff=0.,
-        norm_coeff=0.,
+        sparse_coeff=0.0,
+        norm_coeff=0.0,
         sparsity=sparsity,
         limits=tuple((None, None) for _ in range(len(chosen_isins))),
         desired_norm=desired_norm,
@@ -114,26 +118,25 @@ def run(number_isins, do_plot, verbose=True):
     )
 
     # limits : may be to complex to put in run_configs.json
-    def objective(w):
-        return loss_portfolio_mean_var(
-            wt_np=w,
-            wt_1_np=weights_day_before.to_numpy(),
-            r_np=selected_returns.loc[date].to_numpy().reshape((number_isins, 1)),
-            risk_coeff=overall_risk_coeff,
-            sparse_coeff=overall_sparse_coeff,
-            norm_coeff=overall_norm_coeff,
-            sparsity=sparsity,
-            limits=tuple((-1., 1.) for _ in range(len(chosen_isins))),
-            desired_norm=desired_norm,
-            eps_np=fees.to_numpy(),
-            cov_np=selected_cov.to_numpy(),
-            continous_window=True,
-            n=len(chosen_isins),
-            by_component=False,
-        )
+    # testing class
+    analytical_configuration = LossPortfolioMeanVar(
+        wt_1_np=weights_day_before.to_numpy(),
+        r_np=selected_returns.loc[date].to_numpy().reshape((number_isins, 1)),
+        risk_coeff=overall_risk_coeff,
+        sparse_coeff=0.0,
+        norm_coeff=0.0,
+        sparsity=sparsity,
+        limits=tuple((None, None) for _ in range(len(chosen_isins))),
+        desired_norm=desired_norm,
+        eps_np=np.zeros_like(fees.to_numpy()),
+        cov_np=selected_cov.to_numpy(),
+        continous_window=continous_window,
+        n=len(chosen_isins),
+        by_component=True,
+    )
 
     # check the function is working correctly
-    assert objective(analy_opt) == loss_at_min
+    assert analytical_configuration(analy_opt) == loss_at_min
 
     # weights boundaries
     bounds_min = np.full(shape=(1, number_isins), fill_value=-1.0)
@@ -142,7 +145,7 @@ def run(number_isins, do_plot, verbose=True):
 
     # Using custom start temp.
     t0 = time()
-    hpath = (Path(path_save_images) / f"history_{number_isins}")
+    hpath = Path(path_save_images) / f"history_{number_isins}"
     if not hpath.is_dir():
         hpath.mkdir()
     ann = Annealer(
@@ -155,10 +158,7 @@ def run(number_isins, do_plot, verbose=True):
         history_path=str(hpath),
     )
     numerical_solution, val_at_best, _, hist, final_hist, _ = ann.fit(
-        alpha=alpha,
-        stopping_limit=0.001,
-        npoints=2,
-        stop_at_first_found=True
+        alpha=alpha, stopping_limit=0.001, npoints=2, stop_at_first_found=True
     )
     tf = time() - t0
     fig_hist, _ = plot(hpath, step_size=10, weights_names=chosen_isins)
