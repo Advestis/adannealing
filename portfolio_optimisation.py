@@ -139,9 +139,10 @@ def run(number_isins, do_plot, verbose=True):
     assert analytical_configuration(analy_opt) == loss_at_min
 
     # weights boundaries
-    bounds_min = np.full(shape=(1, number_isins), fill_value=-1.0)
-    bounds_max = np.full(shape=(1, number_isins), fill_value=+1.0)
-    bounds = np.concatenate([bounds_min, bounds_max]).T
+    # bound_min and bound_max must be induced by limits passed via the loss class.
+    # bounds_min = np.full(shape=(1, number_isins), fill_value=-1.0)
+    # bounds_max = np.full(shape=(1, number_isins), fill_value=+1.0)
+    # bounds = np.concatenate([bounds_min, bounds_max]).T
 
     # Using custom start temp.
     t0 = time()
@@ -149,9 +150,9 @@ def run(number_isins, do_plot, verbose=True):
     if not hpath.is_dir():
         hpath.mkdir()
     ann = Annealer(
-        loss=objective,
+        loss=analytical_configuration,
         weights_step_size=step_size,
-        bounds=bounds,
+        # bounds=bounds,
         alpha=alpha,
         iterations=n_iterations,
         verbose=verbose,

@@ -280,9 +280,10 @@ class Annealer:
 
     def __init__(
         self,
+        # TODO : loss is now an instance of a class
         loss: Callable,
         weights_step_size: Union[float, tuple, list, set, np.ndarray],
-        bounds: Optional[Union[tuple, list, set, np.ndarray]] = None,
+        # bounds: Optional[Union[tuple, list, set, np.ndarray]] = None,
         init_states: Optional[Union[tuple, list, set, np.ndarray]] = None,
         temp_0: Optional[float] = None,
         temp_min: float = 0,
@@ -305,10 +306,6 @@ class Annealer:
             Size of the variation to apply to each weights at each epoch. If a float is given, the same size is used for
             every weight. If a np.ndarray is given, it must have 'dimensions' entries, each entry will be the step size
             of one weight.
-        bounds: Union[tuple, list, set, np.ndarray]
-            Optional. The limit of the weights, used to determine initial state.
-            Must be a 2-D array of size ('dimensions', 2). Note that if bounds are not specified,
-            then init_states must be, and vice-versa.
         init_states: Union[tuple, list, set, np.ndarray]
             Optional. Initial values of the weights. Will use random values using 'bounds' if not specified.
             If specified, its size defines the number of dimensions. Note that if init_states are not specified,
@@ -365,6 +362,8 @@ class Annealer:
         if iterations is None:
             raise TypeError("'iterations' can not be None")
 
+
+        # TODO: start from here: deduce bounds from objective class
         if bounds is None and init_states is None:
             raise ValueError("At least one of 'init_states' and 'bounds' must be specified")
 
