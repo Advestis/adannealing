@@ -25,11 +25,11 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import logging
 import argparse
-import matplotlib.pyplot as plt
-from adlearn.engine import get_engine
+from adlearn.engine import Engine
 from time import time
+import matplotlib.pyplot as plt
 
-engine = get_engine(kind="multiproc", context="spawn", print_percent=None, max_cpus=10)
+engine = Engine(kind="multiproc")
 
 from adannealing import Annealer, plot
 from profiling.financial import load_financial_configurations, analy_optim_mean_var, loss_portfolio_mean_var
