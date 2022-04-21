@@ -362,9 +362,14 @@ class Annealer:
         if iterations is None:
             raise TypeError("'iterations' can not be None")
 
-        limits_ = np.array(loss.limits)
-        mask = (limits_ != None).astype(int)
-        bounds = np.ma.array(bounds, mask=mask).filled(fill_value=limits_)
+        if loss.limits is not None:
+            limits_ = np.array(loss.limits)
+            if bounds is None:
+                bounds = limits_
+            else:
+                mask = (limits_ != None).astype(int)
+                bounds = np.ma.array(bounds, mask=mask).filled(fill_value=limits_)
+
         if bounds is None and init_states is None:
             raise ValueError("At least one of 'init_states' and 'bounds' must be specified")
 

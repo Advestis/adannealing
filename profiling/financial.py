@@ -68,6 +68,7 @@ class LossPortfolioMeanVar:
                         ]
                     )
             else:
+                self.limits = None
                 self.penalty = lambda w: 0.0
 
         else:
