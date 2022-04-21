@@ -83,7 +83,13 @@ class LossPortfolioMeanVar:
         penalty = self.penalty(wt_np)
         norm = np.abs(np.linalg.norm(wt_np, ord=1) - self.desired_norm)
 
+        return_term = -return_term
+        risk_term = risk_term * self.risk_coeff
+        sparse_term = self.sparse_coeff * sparse_term
+        norm = norm * self.norm_coeff
+
         if self.by_component:
+            logger.info("\n")
             logger.info(f" [LOSS] return term : {return_term}")
             logger.info(f" [LOSS] risk term : {risk_term}")
             logger.info(f" [LOSS] fees term : {fees_term}")
@@ -91,14 +97,7 @@ class LossPortfolioMeanVar:
             logger.info(f" [LOSS] penalty term : {penalty}")
             logger.info(f" [LOSS] norm term : {norm}")
 
-        loss = (
-            -return_term
-            + risk_term * self.risk_coeff
-            + fees_term
-            + self.sparse_coeff * sparse_term
-            + penalty
-            + norm * self.norm_coeff
-        )
+        loss = return_term + risk_term + fees_term + sparse_term + penalty + norm
 
         return loss[0][0]
 

@@ -58,7 +58,9 @@ logger = logging.getLogger(__name__)
     step_size,
     alpha,
     all_prices,
-) = load_financial_configurations("profiling/run_configs.json")
+) = load_financial_configurations("profiling/run_configs_analytical_solution.json")
+# TODO: pass these limits via configuration file ?
+limits = tuple(((-0.5, 0.5), (-2.5, 0), (-0.1, 0.1), (0.0, 1.5), (0.0, 0.7)))
 
 
 def run(number_isins, do_plot, verbose=True):
@@ -105,10 +107,10 @@ def run(number_isins, do_plot, verbose=True):
         wt_1_np=weights_day_before.to_numpy(),
         r_np=selected_returns.loc[date].to_numpy().reshape((number_isins, 1)),
         risk_coeff=overall_risk_coeff,
-        sparse_coeff=0.0,
-        norm_coeff=0.0,
+        sparse_coeff=overall_sparse_coeff,
+        norm_coeff=overall_norm_coeff,
         sparsity=sparsity,
-        limits=tuple((None, None) for _ in range(len(chosen_isins))),
+        limits=limits,
         desired_norm=desired_norm,
         eps_np=np.zeros_like(fees.to_numpy()),
         cov_np=selected_cov.to_numpy(),
@@ -123,10 +125,10 @@ def run(number_isins, do_plot, verbose=True):
         wt_1_np=weights_day_before.to_numpy(),
         r_np=selected_returns.loc[date].to_numpy().reshape((number_isins, 1)),
         risk_coeff=overall_risk_coeff,
-        sparse_coeff=0.0,
-        norm_coeff=0.0,
+        sparse_coeff=overall_sparse_coeff,
+        norm_coeff=overall_norm_coeff,
         sparsity=sparsity,
-        limits=tuple((None, None) for _ in range(len(chosen_isins))),
+        limits=limits,
         desired_norm=desired_norm,
         eps_np=np.zeros_like(fees.to_numpy()),
         cov_np=selected_cov.to_numpy(),

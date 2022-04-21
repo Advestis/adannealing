@@ -363,12 +363,17 @@ class Annealer:
             raise TypeError("'iterations' can not be None")
 
         if loss.limits is not None:
+            # parts of bounds will be overwritten
             limits_ = np.array(loss.limits)
             if bounds is None:
                 bounds = limits_
             else:
                 mask = (limits_ != None).astype(int)
                 bounds = np.ma.array(bounds, mask=mask).filled(fill_value=limits_)
+
+        else:
+            # else .... bounds are the same as in previous version
+            pass
 
         if bounds is None and init_states is None:
             raise ValueError("At least one of 'init_states' and 'bounds' must be specified")
@@ -377,6 +382,7 @@ class Annealer:
             logger.warning("Specified bounds and init_states. Bounds are then ignored.")
 
         if init_states is None:
+            assert (bounds == None).any()
             bounds = to_array(bounds, "bounds")
             if bounds.ndim != 2 or bounds.shape[1] != 2:
                 raise ValueError(f"'bounds' dimension should be (any, 2), got {bounds.shape}")
@@ -1065,7 +1071,7 @@ class Annealer:
                 curr, curr_loss = candidate, candidate_loss
                 self._debug(f"Accepted : {i_} f({candidate}) = {candidate_loss}")
             else:
-                metropolis = np.exp(-diff / np.abs(curr_loss) / temp)
+                metropolis = np.exp(-diff / temp)
                 if np.random.uniform() < metropolis:
                     accepted = True
                     points_accepted = points_accepted + 1
