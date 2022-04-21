@@ -27,6 +27,7 @@ import logging
 import argparse
 from adlearn.engine import Engine
 from time import time
+import matplotlib.pyplot as plt
 
 engine = Engine(kind="multiproc")
 
