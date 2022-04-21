@@ -95,11 +95,10 @@ def run(number_isins, do_plot, verbose=True):
         cut=1e-8,
     )
 
-    # loss value at optimum
-    # In this branch, as I am introducing deviations from solvable case in the loss,
-    # this analytic solution refers to the problem with only returns and risk terms
     fees = pd.DataFrame(data=np.full(shape=(number_isins, 1), fill_value=common_fee), index=[chosen_isins])
 
+    # In this branch, as I am introducing deviations from solvable case in the loss,
+    # this analytic solution refers to the problem with only returns and risk terms
     loss_at_min = loss_portfolio_mean_var(
         wt_np=analy_opt,
         wt_1_np=weights_day_before.to_numpy(),
@@ -198,7 +197,7 @@ def run(number_isins, do_plot, verbose=True):
         # TODO: to change following line if you look to different params rather than 1st and 2nd
 
         def objective_2d(np_array_2):
-            return objective(np.concatenate([np_array_2, analy_opt[2:]]))
+            return analytical_configuration(np.concatenate([np_array_2, analy_opt[2:]]))
 
         domain = pd.DataFrame(data=np.zeros((len(wx), len(wy))), index=wx, columns=wy)
         for w_x in domain.index:

@@ -712,6 +712,7 @@ class Annealer:
                     loss=self.loss,
                     weights_step_size=self.weights_step_size,
                     init_states=init_states[i],
+                    bounds=self.bounds,
                     temp_0=temp_0,
                     temp_min=temp_min,
                     alpha=alpha,
