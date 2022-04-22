@@ -11,11 +11,13 @@ class LossPortfolioMeanVar:
         self,
         wt_1_np: np.array,
         r_np: np.array,
-        risk_coeff: float,
-        sparse_coeff: float,
-        norm_coeff: float,
-        eps_np: np.array,
-        cov_np: np.array,
+        lambda_risk: float,
+        lambda_sparse: float,
+        lambda_norm: float,
+        fees: np.array,
+        cov_risk: np.array,
+
+             FROM HERE
         sparsity: float,
         limits: tuple,
         desired_norm: float,
@@ -46,13 +48,14 @@ class LossPortfolioMeanVar:
         assert self.r_np.shape == self.common_shape
         assert self.eps_np.shape == self.common_shape
         assert self.cov_np.shape == (self.n, self.n)
-        assert len(self.limits) == self.n
+        if self.limits is not None:
+            assert len(self.limits) == self.n
 
         if self.limits is not None:
             not_none = np.where([lim != (None, None) for lim in self.limits])[0]
             if len(not_none) > 0:
                 if self.continous_window:
-                    self.penalty = lambda w: np.prod(
+                    self.penalty = lambda w: np.sum(
                         [
                             continuous_constraint(w[i], point_low, point_high)
                             for i, (point_low, point_high) in enumerate(self.limits)
@@ -60,7 +63,7 @@ class LossPortfolioMeanVar:
                         ]
                     )
                 else:
-                    self.penalty = lambda w: np.prod(
+                    self.penalty = lambda w: np.sum(
                         [
                             non_continuous_constraint(w[i], point_low, point_high)
                             for i, (point_low, point_high) in enumerate(self.limits)
@@ -183,7 +186,8 @@ def loss_portfolio_mean_var(
         assert r_np.shape == common_shape
         assert eps_np.shape == common_shape
         assert cov_np.shape == (n, n)
-        assert len(limits) == n
+        if limits is not None:
+            assert len(limits) == n
 
         if limits is not None:
             not_none = np.where([lim != (None, None) for lim in limits])[0]

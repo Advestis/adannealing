@@ -382,7 +382,7 @@ class Annealer:
             logger.warning("Specified bounds and init_states. Bounds are then ignored.")
 
         if init_states is None:
-            assert (bounds == None).any()
+            assert ~(bounds == None).any()
             bounds = to_array(bounds, "bounds")
             if bounds.ndim != 2 or bounds.shape[1] != 2:
                 raise ValueError(f"'bounds' dimension should be (any, 2), got {bounds.shape}")

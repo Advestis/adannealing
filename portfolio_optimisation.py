@@ -16,18 +16,18 @@ os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 
 from adutils import setup_logger
-
-setup_logger()
 import numpy as np
-import pandas as pd
-from pathlib import Path
 import plotly.graph_objects as go
+setup_logger()
+from pathlib import Path
 from plotly.subplots import make_subplots
 import logging
 import argparse
 from adlearn.engine import Engine
 from time import time
 import matplotlib.pyplot as plt
+import pandas as pd
+
 
 engine = Engine(kind="multiproc")
 
@@ -60,7 +60,7 @@ logger = logging.getLogger(__name__)
     all_prices,
 ) = load_financial_configurations("profiling/run_configs_analytical_solution.json")
 # TODO: pass these limits via configuration file ?
-limits = tuple(((-0.5, 0.5), (-2.5, 0), (-0.1, 0.1), (0.0, 1.5), (0.0, 0.7)))
+limits = tuple(((0., 0.25), (-2.5, -2.)))
 
 
 def run(number_isins, do_plot, verbose=True):
@@ -100,48 +100,23 @@ def run(number_isins, do_plot, verbose=True):
 
     fees = pd.DataFrame(data=np.full(shape=(number_isins, 1), fill_value=common_fee), index=[chosen_isins])
 
-    # In this branch, as I am introducing deviations from solvable case in the loss,
-    # this analytic solution refers to the problem with only returns and risk terms
-    loss_at_min = loss_portfolio_mean_var(
-        wt_np=analy_opt,
-        wt_1_np=weights_day_before.to_numpy(),
-        r_np=selected_returns.loc[date].to_numpy().reshape((number_isins, 1)),
-        risk_coeff=overall_risk_coeff,
-        sparse_coeff=overall_sparse_coeff,
-        norm_coeff=overall_norm_coeff,
-        sparsity=sparsity,
-        limits=limits,
-        desired_norm=desired_norm,
-        eps_np=np.zeros_like(fees.to_numpy()),
-        cov_np=selected_cov.to_numpy(),
-        continous_window=continous_window,
-        n=len(chosen_isins),
-        by_component=True,
-    )
-
-    # limits : may be to complex to put in run_configs.json
-    # testing class
-    analytical_configuration = LossPortfolioMeanVar(
-        wt_1_np=weights_day_before.to_numpy(),
-        r_np=selected_returns.loc[date].to_numpy().reshape((number_isins, 1)),
-        risk_coeff=overall_risk_coeff,
-        sparse_coeff=overall_sparse_coeff,
-        norm_coeff=overall_norm_coeff,
-        sparsity=sparsity,
-        limits=limits,
-        desired_norm=desired_norm,
-        eps_np=np.zeros_like(fees.to_numpy()),
-        cov_np=selected_cov.to_numpy(),
-        continous_window=continous_window,
-        n=len(chosen_isins),
-        by_component=True,
-    )
-
-    # check the function is working correctly
-    assert analytical_configuration(analy_opt) == loss_at_min
-
     # weights boundaries
-    # Those for which exist a constraint for optimisation are overwritten
+    limits_configuration = LossPortfolioMeanVar(
+        wt_1_np=weights_day_before.to_numpy(),
+        r_np=selected_returns.loc[date].to_numpy().reshape((number_isins, 1)),
+        risk_coeff=overall_risk_coeff,
+        sparse_coeff=overall_sparse_coeff,
+        norm_coeff=overall_norm_coeff,
+        sparsity=sparsity,
+        limits=limits,
+        desired_norm=desired_norm,
+        eps_np=np.zeros_like(fees.to_numpy()),
+        cov_np=selected_cov.to_numpy(),
+        continous_window=continous_window,
+        n=len(chosen_isins),
+        by_component=False,
+    )
+
     bounds_min = np.full(shape=(1, number_isins), fill_value=-1.0)
     bounds_max = np.full(shape=(1, number_isins), fill_value=+1.0)
     bounds = np.concatenate([bounds_min, bounds_max]).T
@@ -152,7 +127,7 @@ def run(number_isins, do_plot, verbose=True):
     if not hpath.is_dir():
         hpath.mkdir()
     ann = Annealer(
-        loss=analytical_configuration,
+        loss=limits_configuration,
         weights_step_size=step_size,
         bounds=bounds,
         alpha=alpha,
@@ -193,14 +168,15 @@ def run(number_isins, do_plot, verbose=True):
         # TODO: to change following line if you look to different params rather than 1st and 2nd
         x_explored = weights[:, 0]
         y_explored = weights[:, 1]
-        z_explored = hist.loss.copy()
+        # TODO : if run -p (do_plot = True) : AttributeError: 'Sampler' object has no attribute 'loss'
+        z_explored = hist.losses.copy()
 
         wx = np.linspace(np.min(x_explored), np.max(x_explored), 100)
         wy = np.linspace(np.min(y_explored), np.max(y_explored), 100)
         # TODO: to change following line if you look to different params rather than 1st and 2nd
 
         def objective_2d(np_array_2):
-            return analytical_configuration(np.concatenate([np_array_2, analy_opt[2:]]))
+            return limits_configuration(np.concatenate([np_array_2, analy_opt[2:]]))
 
         domain = pd.DataFrame(data=np.zeros((len(wx), len(wy))), index=wx, columns=wy)
         for w_x in domain.index:
@@ -231,7 +207,7 @@ def run(number_isins, do_plot, verbose=True):
             mode="markers",
             marker=dict(
                 size=1.2,
-                color=hist.temp,
+                color=hist.temps,
                 symbol=list(map(lambda val: "x" if val else "circle", hist.accepted)),
                 showscale=True,
                 colorbar=dict(x=0.45),
