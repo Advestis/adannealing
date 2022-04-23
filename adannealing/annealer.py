@@ -1,7 +1,7 @@
 import math
 import os
 from time import sleep, time
-
+import plotly.graph_objects as go
 from typing import Callable, Dict, Any, Collection, List
 import inspect
 import multiprocessing as mp
@@ -10,7 +10,6 @@ from more_itertools import distinct_combinations
 from typing import Union, Tuple, Optional
 import matplotlib.pyplot as plt
 import numpy as np
-import ast
 from pathlib import Path
 from matplotlib.colors import LogNorm
 from matplotlib.gridspec import GridSpec
@@ -750,6 +749,7 @@ class Annealer:
             ]
             # noinspection PyUnboundLocalVariable
             results = Annealer._fit_many(annealers, stop_at_first_found=stop_at_first_found, history_path=history_path)
+            self.results = results
             return results
 
     def _get_next_temperature(
@@ -1302,22 +1302,83 @@ class Annealer:
         fig.savefig(str(sampler_path / "annealing.pdf"))
 
         if do_3d:
+
+            specs = [[{'type': 'surface'} for _ in range(nweights - 1)] for _ in range(nweights - 1)]
+
             fig_3d = make_subplots(
                 rows=nweights - 1,
                 cols=nweights - 1,
+                specs=specs
             )
 
             i_couples = list(itertools.combinations(range(nweights), 2))
             names_couples = list(itertools.combinations(weights_names, 2))
 
             def objective_2d(i, j, wi, wj):
-                annealer_solution[i] = wi
-                annealer_solution[j] = wj
-                losses(annealer_solution)
+                ann_solution = self.results[0].reshape(-1, 1).copy()
+                ann_solution[i] = wi
+                ann_solution[j] = wj
+                return self.loss(ann_solution)
 
             objective_couples = [lambda wi, wj : objective_2d(i, j, wi, wj) for (i, j) in i_couples]
 
-        return fig, [final_weights, final_loss]
+            for i, (row, col) in enumerate(i_couples):
+                explored_w_row = weights[:, row]
+                explored_w_col = weights[:, col]
+
+                w_row = np.linspace(np.min(explored_w_row), np.max(explored_w_row), 100)
+                w_col = np.linspace(np.min(explored_w_col), np.max(explored_w_col), 100)
+
+                domain = pd.DataFrame(data=np.zeros((len(w_row), len(w_col))), index=w_row, columns=w_col)
+                for wr in domain.index:
+                    for wc in domain.columns:
+                        domain.loc[wr, wc] = objective_couples[i](wr, wc)
+
+                fig_3d.add_trace(
+                    go.Surface(
+                        z=domain.values, y=domain.index, x=domain.columns, colorscale="Blues", showscale=False,
+                        opacity=0.5
+                    ),
+                    row=nweights-row-1,
+                    col=col,)
+
+                z_explored = np.zeros_like(temps)
+                for k in range(len(temps)):
+                    z_explored[k] = objective_couples[i](explored_w_row[k], explored_w_col[k])
+
+                fig_3d.add_scatter3d(
+                    # for some reason, need to transpose
+                    x=explored_w_col,
+                    y=explored_w_row,
+                    z=z_explored,
+                    mode="markers",
+                    marker=dict(
+                        size=1.2,
+                        color=temps,
+                        symbol=list(map(lambda val: "x" if val else "circle", temps)),
+                        showscale=True,
+                    ),
+                    row=nweights-row-1,
+                    col=col,)
+
+                fig_3d.add_scatter3d(
+                    # for some reason, need to transpose
+                    x=[self.results[0][1]],
+                    y=[self.results[0][0]],
+                    z=[self.results[1]],
+                    mode="markers",
+                    marker=dict(
+                        size=3,
+                        color="red",
+                        symbol="circle",
+                    ),
+                    row=nweights-row-1,
+                    col=col,)
+
+                fig_3d.to_html(str(sampler_path / "3d_visualisation.html"))
+
+
+        return fig, fig_3d, [final_weights, final_loss]
 
 
 def finish(sampler: Sampler) -> Tuple[np.ndarray, float, float, int]:
