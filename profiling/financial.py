@@ -16,11 +16,9 @@ class LossPortfolioMeanVar:
         lambda_norm: float,
         fees: np.array,
         cov_risk: np.array,
-
-             FROM HERE
-        sparsity: float,
-        limits: tuple,
-        desired_norm: float,
+        sparsity_target: float,
+        constraints: tuple,
+        sum_w_target: float,
         continous_window: bool,
         n: int,
         by_component: bool = False,
@@ -28,14 +26,14 @@ class LossPortfolioMeanVar:
 
         self.wt_1_np = wt_1_np
         self.r_np = r_np
-        self.risk_coeff = risk_coeff
-        self.sparse_coeff = sparse_coeff
-        self.norm_coeff = norm_coeff
-        self.eps_np = eps_np
-        self.cov_np = cov_np
-        self.sparsity = sparsity
-        self.limits = limits
-        self.desired_norm = desired_norm
+        self.lambda_risk = lambda_risk
+        self.lambda_sparse = lambda_sparse
+        self.lambda_norm = lambda_norm
+        self.fees = fees
+        self.cov_risk = cov_risk
+        self.sparsity_target = sparsity_target
+        self.constraints = constraints
+        self.sum_w_target = sum_w_target
         self.continous_window = continous_window
         self.n = n
         self.by_component = by_component
@@ -46,19 +44,19 @@ class LossPortfolioMeanVar:
     def __setup(self):
         assert self.wt_1_np.shape == self.common_shape
         assert self.r_np.shape == self.common_shape
-        assert self.eps_np.shape == self.common_shape
-        assert self.cov_np.shape == (self.n, self.n)
-        if self.limits is not None:
-            assert len(self.limits) == self.n
+        assert self.fees.shape == self.common_shape
+        assert self.cov_risk.shape == (self.n, self.n)
+        if self.constraints is not None:
+            assert len(self.constraints) == self.n
 
-        if self.limits is not None:
-            not_none = np.where([lim != (None, None) for lim in self.limits])[0]
+        if self.constraints is not None:
+            not_none = np.where([lim != (None, None) for lim in self.constraints])[0]
             if len(not_none) > 0:
                 if self.continous_window:
                     self.penalty = lambda w: np.sum(
                         [
                             continuous_constraint(w[i], point_low, point_high)
-                            for i, (point_low, point_high) in enumerate(self.limits)
+                            for i, (point_low, point_high) in enumerate(self.constraints)
                             if i in not_none
                         ]
                     )
@@ -66,12 +64,12 @@ class LossPortfolioMeanVar:
                     self.penalty = lambda w: np.sum(
                         [
                             non_continuous_constraint(w[i], point_low, point_high)
-                            for i, (point_low, point_high) in enumerate(self.limits)
+                            for i, (point_low, point_high) in enumerate(self.constraints)
                             if i in not_none
                         ]
                     )
             else:
-                self.limits = None
+                self.constraints = None
                 self.penalty = lambda w: 0.0
 
         else:
@@ -80,16 +78,16 @@ class LossPortfolioMeanVar:
     def __call__(self, wt_np):
         assert wt_np.shape == self.common_shape
         return_term = self.r_np.T.dot(wt_np)
-        risk_term = 0.5 * wt_np.T.dot(self.cov_np.dot(wt_np))
-        fees_term = np.abs(wt_np - self.wt_1_np).T.dot(self.eps_np)
-        sparse_term = np.linalg.norm(wt_np) ** 2 - np.linalg.norm(wt_np, ord=1) ** 2 * self.sparsity
+        risk_term = 0.5 * wt_np.T.dot(self.cov_risk.dot(wt_np))
+        fees_term = np.abs(wt_np - self.wt_1_np).T.dot(self.fees)
+        sparse_term = np.linalg.norm(wt_np) ** 2 - np.linalg.norm(wt_np, ord=1) ** 2 * self.sparsity_target
         penalty = self.penalty(wt_np)
-        norm = np.abs(np.linalg.norm(wt_np, ord=1) - self.desired_norm)
+        norm = np.abs(np.linalg.norm(wt_np, ord=1) - self.sum_w_target)
 
         return_term = -return_term
-        risk_term = risk_term * self.risk_coeff
-        sparse_term = self.sparse_coeff * sparse_term
-        norm = norm * self.norm_coeff
+        risk_term = risk_term * self.lambda_risk
+        sparse_term = self.lambda_sparse * sparse_term
+        norm = norm * self.lambda_norm
 
         if self.by_component:
             logger.info("\n")
@@ -111,9 +109,6 @@ def load_financial_configurations(path):
     all_prices = pd.read_parquet(configs["prices_path"])
 
     # parameters run ++++++++++++++++++++++++++++++++++++++++++++++++
-    # Assumptions in the code:
-    #   - common fees
-    #   - weights_t-1 = equi
     path_save_images = configs["path_save_images"]
     date = configs["date"]
     common_fee = configs["common_fee"]
@@ -148,90 +143,6 @@ def load_financial_configurations(path):
         alpha,
         all_prices,
     )
-
-
-def loss_portfolio_score_based():
-    pass
-
-
-FIRST_CALL = True
-PENALTY = None
-
-
-def loss_portfolio_mean_var(
-    wt_np: np.array,
-    wt_1_np: np.array,
-    r_np: np.array,
-    risk_coeff: float,
-    sparse_coeff: float,
-    norm_coeff: float,
-    eps_np: np.array,
-    cov_np: np.array,
-    sparsity: float,
-    limits: tuple,
-    desired_norm: float,
-    continous_window: bool,
-    n: int,
-    by_component: bool = False,
-) -> float:
-
-    global FIRST_CALL
-    global NORMED_BOX
-
-    if FIRST_CALL:
-        FIRST_CALL = False
-        common_shape = (n, 1)
-        assert wt_np.shape == common_shape
-        assert wt_1_np.shape == common_shape
-        assert r_np.shape == common_shape
-        assert eps_np.shape == common_shape
-        assert cov_np.shape == (n, n)
-        if limits is not None:
-            assert len(limits) == n
-
-        if limits is not None:
-            not_none = np.where([lim != (None, None) for lim in limits])[0]
-            if len(not_none) > 0:
-                if continous_window:
-                    PENALTY = lambda w: np.prod(
-                        [
-                            continuous_constraint(w[i], point_low, point_high)
-                            for i, (point_low, point_high) in enumerate(limits)
-                            if i in not_none
-                        ]
-                    )
-                else:
-                    PENALTY = lambda w: np.prod(
-                        [
-                            non_continuous_constraint(w[i], point_low, point_high)
-                            for i, (point_low, point_high) in enumerate(limits)
-                            if i in not_none
-                        ]
-                    )
-            else:
-                PENALTY = lambda w: 0.0
-
-        else:
-            PENALTY = lambda w: 0.0
-
-    return_term = r_np.T.dot(wt_np)
-    risk_term = 0.5 * wt_np.T.dot(cov_np.dot(wt_np))
-    fees_term = np.abs(wt_np - wt_1_np).T.dot(eps_np)
-    sparse_term = np.linalg.norm(wt_np) ** 2 - np.linalg.norm(wt_np, ord=1) ** 2 * sparsity
-    penalty = PENALTY(wt_np)
-    norm = np.abs(np.linalg.norm(wt_np, ord=1) - desired_norm)
-
-    if by_component:
-        logger.info(f" [LOSS] return term : {return_term}")
-        logger.info(f" [LOSS] risk term : {risk_term}")
-        logger.info(f" [LOSS] fees term : {fees_term}")
-        logger.info(f" [LOSS] sparsity term : {sparse_term}")
-        logger.info(f" [LOSS] penalty term : {penalty}")
-        logger.info(f" [LOSS] norm term : {norm}")
-
-    loss = -return_term + risk_term * risk_coeff + fees_term + sparse_coeff * sparse_term + penalty + norm * norm_coeff
-
-    return loss[0][0]
 
 
 def continuous_constraint(x, point_low, point_high):

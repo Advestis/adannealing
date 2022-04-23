@@ -362,9 +362,9 @@ class Annealer:
         if iterations is None:
             raise TypeError("'iterations' can not be None")
 
-        if loss.limits is not None:
+        if loss.constraints is not None:
             # parts of bounds will be overwritten
-            limits_ = np.array(loss.limits)
+            limits_ = np.array(loss.constraints)
             if bounds is None:
                 bounds = limits_
             else:

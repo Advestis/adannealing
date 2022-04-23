@@ -7,8 +7,28 @@ from pathlib import Path
 from matplotlib.colors import LogNorm
 from matplotlib.gridspec import GridSpec
 import logging
+import matplotlib.markers as mmarkers
+from plotly.subplots import make_subplots
+
 
 logger = logging.getLogger(__name__)
+
+
+def mscatter(x, y, ax=None, m=None, **kw):
+    if not ax:
+        ax = plt.gca()
+    sc = ax.scatter(x, y, **kw)
+    if (m is not None) and (len(m) == len(x)):
+        paths = []
+        for marker in m:
+            if isinstance(marker, mmarkers.MarkerStyle):
+                marker_obj = marker
+            else:
+                marker_obj = mmarkers.MarkerStyle(marker)
+            path = marker_obj.get_path().transformed(marker_obj.get_transform())
+            paths.append(path)
+        sc.set_paths(paths)
+    return sc
 
 
 def make_segments(x, y):
@@ -163,6 +183,7 @@ def plot(
     step_size: int = 1,
     nweights: int = 10,
     weights_names: Optional[list] = None,
+    do_3d: bool = False,
 ) -> Union[Tuple[plt.Figure, list], None]:
     """From a directory containing 'result.csv' and 'history.csv', produces plots.
     Will produce the file "annealing.pdf" in 'sampler_path' and return the corresponding Figure object.
@@ -238,6 +259,7 @@ def plot(
     iterations = sampler.iterations.values[::step_size]
     acc_ratios = sampler.acc_ratios.iloc[::step_size].values
     temps = sampler.parameters.values[::step_size]
+    accepted = sampler.accepted.values[::step_size]
 
     final_weights = final_sampler.weights.iloc[0, :nweights].values
     final_loss = final_sampler.losses.values
@@ -258,9 +280,11 @@ def plot(
     second_ax.grid(True, ls="--", lw=0.2, alpha=0.5)
     third_ax.grid(True, ls="--", lw=0.2, alpha=0.5)
     cmap = plt.get_cmap("inferno")
-    first_ax.scatter(iterations, temps, c=temps, cmap=cmap, norm=LogNorm(), s=7)
-    second_ax.scatter(iterations, acc_ratios, c=temps, cmap=cmap, norm=LogNorm(), s=7)
-    im = third_ax.scatter(iterations, losses, c=temps, cmap=cmap, norm=LogNorm(), s=7)
+
+    conditioned_marker = ["o" if a else "x" for a in accepted]
+    mscatter(iterations, temps, ax=first_ax, m=conditioned_marker, c=temps, cmap=cmap, norm=LogNorm(), s=7)
+    mscatter(iterations, acc_ratios, ax=second_ax, m=conditioned_marker, c=temps, cmap=cmap, norm=LogNorm(), s=7)
+    im = mscatter(iterations, losses, ax=third_ax, m=conditioned_marker, c=temps, cmap=cmap, norm=LogNorm(), s=7)
     third_ax.plot([iterations[0], iterations[-1]], [final_loss[-1], final_loss[-1]], c="black")
     third_ax.text(iterations[0], final_loss[-1], s=f"{round(final_loss[-1], 3)}", c="black")
     fig.subplots_adjust(right=0.8)
@@ -279,9 +303,11 @@ def plot(
         ax2.set_ylabel("Loss")
         ax2.set_xlabel(f"Weight {iplot if weights_names is None else weights_names[iplot]}")
 
-        ax1.scatter(
+        mscatter(
             iterations,
             weights[:, iplot],
+            ax=ax1,
+            m=conditioned_marker,
             s=7,
             c=temps,
             cmap=cmap,
@@ -289,7 +315,7 @@ def plot(
         )
         ax1.plot([iterations[0], iterations[-1]], [final_weights[iplot], final_weights[iplot]], c="black")
         ax1.text(iterations[0], final_weights[iplot], s=f"{round(final_weights[iplot], 3)}", c="black")
-        ax2.scatter(weights[:, iplot], losses, s=7, c=temps, cmap=cmap, norm=LogNorm())
+        mscatter(weights[:, iplot], losses, ax=ax2, m=conditioned_marker, s=7, c=temps, cmap=cmap, norm=LogNorm())
 
         if len(points) > 0:
             for point in points:
@@ -299,6 +325,13 @@ def plot(
         add_colorbar(fig, im, ax2, axisfontsize)
 
     fig.savefig(str(sampler_path / "annealing.pdf"))
+
+    if do_3d:
+        pass
+
+
+
+
     return fig, [final_weights, final_loss]
 
 
