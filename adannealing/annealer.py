@@ -1202,7 +1202,7 @@ class Annealer:
                     int(directory.stem)
                 except ValueError:
                     continue
-                points.append(self.plot(directory, axisfontsize, step_size, nweights, weights_names)[-1])
+                points.append(self.plot(directory, axisfontsize, step_size, nweights, weights_names, do_3d)[-1])
 
             logger.info(f"Plotting annealing results from {sampler_path}...")
 
@@ -1301,6 +1301,7 @@ class Annealer:
 
         fig.savefig(str(sampler_path / "annealing.pdf"))
 
+        showscale = True
         if do_3d:
 
             specs = [[{'type': 'surface'} for _ in range(nweights - 1)] for _ in range(nweights - 1)]
@@ -1322,49 +1323,56 @@ class Annealer:
 
             objective_couples = [lambda wi, wj : objective_2d(i, j, wi, wj) for (i, j) in i_couples]
 
-            for i, (row, col) in enumerate(i_couples):
-                explored_w_row = weights[:, row]
-                explored_w_col = weights[:, col]
+            for i, (col, row) in enumerate(i_couples):
 
-                w_row = np.linspace(np.min(explored_w_row), np.max(explored_w_row), 100)
-                w_col = np.linspace(np.min(explored_w_col), np.max(explored_w_col), 100)
+                if col == 0:
+                    fig_3d.update_yaxes(title_text=weights_names[row], row=row, col=col+1)
+                if row == nweights-1:
+                    fig_3d.update_xaxes(title_text=weights_names[col], row=row, col=col + 1)
 
-                domain = pd.DataFrame(data=np.zeros((len(w_row), len(w_col))), index=w_row, columns=w_col)
-                for wr in domain.index:
-                    for wc in domain.columns:
-                        domain.loc[wr, wc] = objective_couples[i](wr, wc)
+                explored_w_y = weights[:, row]
+                explored_w_x = weights[:, col]
+
+                w_y = np.linspace(np.min(explored_w_y), np.max(explored_w_y), 100)
+                w_x = np.linspace(np.min(explored_w_x), np.max(explored_w_x), 100)
+
+                domain = pd.DataFrame(data=np.zeros((len(w_x), len(w_y))), index=w_y, columns=w_x)
+                for wy in domain.index:
+                    for wx in domain.columns:
+                        domain.loc[wy, wx] = objective_couples[i](wx, wy)
 
                 fig_3d.add_trace(
                     go.Surface(
                         z=domain.values, y=domain.index, x=domain.columns, colorscale="Blues", showscale=False,
                         opacity=0.5
                     ),
-                    row=nweights-row-1,
-                    col=col,)
+                    row=row,
+                    col=col+1)
 
                 z_explored = np.zeros_like(temps)
                 for k in range(len(temps)):
-                    z_explored[k] = objective_couples[i](explored_w_row[k], explored_w_col[k])
+                    z_explored[k] = objective_couples[i](explored_w_x[k], explored_w_y[k])
 
                 fig_3d.add_scatter3d(
                     # for some reason, need to transpose
-                    x=explored_w_col,
-                    y=explored_w_row,
+                    x=explored_w_x,
+                    y=explored_w_y,
                     z=z_explored,
                     mode="markers",
                     marker=dict(
                         size=1.2,
                         color=temps,
                         symbol=list(map(lambda val: "x" if val else "circle", temps)),
-                        showscale=True,
+                        showscale=showscale,
                     ),
-                    row=nweights-row-1,
-                    col=col,)
+                    row=row,
+                    col=col+1)
+                showscale = False
 
                 fig_3d.add_scatter3d(
                     # for some reason, need to transpose
-                    x=[self.results[0][1]],
-                    y=[self.results[0][0]],
+                    x=[self.results[0][0]],
+                    y=[self.results[0][1]],
                     z=[self.results[1]],
                     mode="markers",
                     marker=dict(
@@ -1372,11 +1380,13 @@ class Annealer:
                         color="red",
                         symbol="circle",
                     ),
-                    row=nweights-row-1,
-                    col=col,)
+                    row=row,
+                    col=col+1)
 
-                fig_3d.to_html(str(sampler_path / "3d_visualisation.html"))
+                scene_n = (col + 1) + (row-1)*(nweights-1)
+                exec(f"fig_3d.update_layout(scene{scene_n}=dict(xaxis_title='{weights_names[col]}', yaxis_title='{weights_names[col]}'),)")
 
+            fig_3d.write_html(str(sampler_path / "3d_visualisation.html"))
 
         return fig, fig_3d, [final_weights, final_loss]
 
