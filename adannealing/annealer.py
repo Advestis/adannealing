@@ -2,14 +2,25 @@ import math
 import os
 from time import sleep, time
 
-import numpy as np
-from typing import Callable, Union, Dict, Any, Collection, Optional, Tuple, List
-import logging
+from typing import Callable, Dict, Any, Collection, List
 import inspect
-from pathlib import Path
 import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from more_itertools import distinct_combinations
+from typing import Union, Tuple, Optional
+import matplotlib.pyplot as plt
+import numpy as np
+import ast
+from pathlib import Path
+from matplotlib.colors import LogNorm
+from matplotlib.gridspec import GridSpec
+import logging
+import matplotlib.markers as mmarkers
+from plotly.subplots import make_subplots
+import itertools
+
+logger = logging.getLogger(__name__)
+
 
 import pandas as pd
 
@@ -1140,6 +1151,175 @@ class Annealer:
         return curr[0], curr_loss, acc_ratio, history, finishing_history, finished
 
 
+    def plot(
+        self,
+        sampler_path: Union[str, Path, Tuple[Sampler, Sampler]],
+        axisfontsize: int = 15,
+        step_size: int = 1,
+        nweights: int = 10,
+        weights_names: Optional[list] = None,
+        do_3d: bool = False,
+    ) -> Union[Tuple[plt.Figure, list], None]:
+        """From a directory containing 'result.csv' and 'history.csv', produces plots.
+        Will produce the file "annealing.pdf" in 'sampler_path' and return the corresponding Figure object.
+        If subfolders themselves containing 'result.csv' and 'history.csv' are present, will plot will call itself on them
+        too.
+        In the plot, will show the first 'nweights'.
+
+        'sampler_path' can also be a tuple of two Sampler objects, the first should then be the full history of the fit and
+        the second the point of the local minimum.
+
+        Parameters
+        ----------
+            sampler_path: Union[str, Path, Tuple[Sampler, Sampler]]
+                Either the path to the directory containing the annealing result, or two Sampler objects
+            axisfontsize: int
+                default value = 15
+            step_size: int
+                plots every 'step_size' iterations instead of all of them (default value = 1)
+            nweights: int
+                Number of weights to display in plots (default value = 10)
+            weights_names: Optional[list]
+                List of names of weights, for axis labels. If None, weights are named using their position index.
+
+        Returns
+        -------
+        Union[Tuple[plt.Figure, list], None]
+            Returns None if the given directory does not contain history.csv or result.csv. Otherwise returns the created
+            figure and the weights and loss of the local minimum.
+        """
+
+        points = []
+
+        if isinstance(sampler_path, (str, Path)):
+            if isinstance(sampler_path, str):
+                sampler_path = Path(sampler_path)
+
+            for directory in sampler_path.glob("*"):
+                if not directory.is_dir():
+                    continue
+                try:
+                    int(directory.stem)
+                except ValueError:
+                    continue
+                points.append(self.plot(directory, axisfontsize, step_size, nweights, weights_names)[-1])
+
+            logger.info(f"Plotting annealing results from {sampler_path}...")
+
+            sampler = sampler_path / "history.csv"
+            final_sampler = sampler_path / "result.csv"
+            if not sampler.is_file():
+                logger.warning(f"No file 'history.csv' found in '{sampler_path}'")
+                return None
+            if not final_sampler.is_file():
+                logger.warning(f"No file 'result.csv' found in '{sampler_path}'")
+                return None
+            sampler = Sampler(pd.read_csv(sampler, index_col=0))
+            final_sampler = Sampler(pd.read_csv(final_sampler, index_col=0))
+
+        else:
+            sampler, final_sampler = sampler_path
+
+        weights = sampler.weights
+        if nweights is None:
+            nweights = 0
+        else:
+            if nweights == "all":
+                nweights = len(weights.columns)
+            else:
+                nweights = min(nweights, len(weights.columns))
+
+        weights = weights.iloc[::step_size, :nweights].values
+        losses = sampler.losses.iloc[::step_size].values
+        iterations = sampler.iterations.values[::step_size]
+        acc_ratios = sampler.acc_ratios.iloc[::step_size].values
+        temps = sampler.parameters.values[::step_size]
+        accepted = sampler.accepted.values[::step_size]
+
+        final_weights = final_sampler.weights.iloc[0, :nweights].values
+        final_loss = final_sampler.losses.values
+
+        grid = GridSpec(3 + nweights, 6, left=0.05, right=0.9, bottom=0.03, top=0.97, hspace=0.3, wspace=0.5)
+        fig = plt.figure(figsize=(22, 3 * (nweights + 3)))
+
+        first_ax = fig.add_subplot(grid[0, :])
+        second_ax = fig.add_subplot(grid[1, :])
+        third_ax = fig.add_subplot(grid[2, :])
+        first_ax.set_xlabel("Iterations", fontsize=axisfontsize)
+        first_ax.set_ylabel("Temp", fontsize=axisfontsize)
+        second_ax.set_xlabel("Iterations", fontsize=axisfontsize)
+        second_ax.set_ylabel("Acc. ratio", fontsize=axisfontsize)
+        third_ax.set_xlabel("Iterations", fontsize=axisfontsize)
+        third_ax.set_ylabel("Loss", fontsize=axisfontsize)
+        first_ax.grid(True, ls="--", lw=0.2, alpha=0.5)
+        second_ax.grid(True, ls="--", lw=0.2, alpha=0.5)
+        third_ax.grid(True, ls="--", lw=0.2, alpha=0.5)
+        cmap = plt.get_cmap("inferno")
+
+        conditioned_marker = ["o" if a else "x" for a in accepted]
+        mscatter(iterations, temps, ax=first_ax, m=conditioned_marker, c=temps, cmap=cmap, norm=LogNorm(), s=7)
+        mscatter(iterations, acc_ratios, ax=second_ax, m=conditioned_marker, c=temps, cmap=cmap, norm=LogNorm(), s=7)
+        im = mscatter(iterations, losses, ax=third_ax, m=conditioned_marker, c=temps, cmap=cmap, norm=LogNorm(), s=7)
+        third_ax.plot([iterations[0], iterations[-1]], [final_loss[-1], final_loss[-1]], c="black")
+        third_ax.text(iterations[0], final_loss[-1], s=f"{round(final_loss[-1], 3)}", c="black")
+        fig.subplots_adjust(right=0.8)
+
+        add_colorbar(fig, im, first_ax, axisfontsize)
+        add_colorbar(fig, im, second_ax, axisfontsize)
+        add_colorbar(fig, im, third_ax, axisfontsize)
+
+        for iplot in range(0, nweights):
+            ax1 = fig.add_subplot(grid[iplot + 3, 0:5])
+            ax2 = fig.add_subplot(grid[iplot + 3, 5])
+            ax1.grid(True, ls="--", lw=0.2, alpha=0.5)
+            ax2.grid(True, ls="--", lw=0.2, alpha=0.5)
+            ax1.set_xlabel("Iterations")
+            ax1.set_ylabel(f"Weights {iplot if weights_names is None else weights_names[iplot]}")
+            ax2.set_ylabel("Loss")
+            ax2.set_xlabel(f"Weight {iplot if weights_names is None else weights_names[iplot]}")
+
+            mscatter(
+                iterations,
+                weights[:, iplot],
+                ax=ax1,
+                m=conditioned_marker,
+                s=7,
+                c=temps,
+                cmap=cmap,
+                norm=LogNorm(),
+            )
+            ax1.plot([iterations[0], iterations[-1]], [final_weights[iplot], final_weights[iplot]], c="black")
+            ax1.text(iterations[0], final_weights[iplot], s=f"{round(final_weights[iplot], 3)}", c="black")
+            mscatter(weights[:, iplot], losses, ax=ax2, m=conditioned_marker, s=7, c=temps, cmap=cmap, norm=LogNorm())
+
+            if len(points) > 0:
+                for point in points:
+                    ax2.scatter(point[0][iplot], point[1], s=10, c="blue")
+            ax2.scatter(final_weights[iplot], final_loss, s=10, c="red")
+
+            add_colorbar(fig, im, ax2, axisfontsize)
+
+        fig.savefig(str(sampler_path / "annealing.pdf"))
+
+        if do_3d:
+            fig_3d = make_subplots(
+                rows=nweights - 1,
+                cols=nweights - 1,
+            )
+
+            i_couples = list(itertools.combinations(range(nweights), 2))
+            names_couples = list(itertools.combinations(weights_names, 2))
+
+            def objective_2d(i, j, wi, wj):
+                annealer_solution[i] = wi
+                annealer_solution[j] = wj
+                losses(annealer_solution)
+
+            objective_couples = [lambda wi, wj : objective_2d(i, j, wi, wj) for (i, j) in i_couples]
+
+        return fig, [final_weights, final_loss]
+
+
 def finish(sampler: Sampler) -> Tuple[np.ndarray, float, float, int]:
     """From a given history in the form of a Sampler object, finds the point with lowest loss and returns the
     corresponding weights, loss, acceptance ratio and position in the index of the Sampler."""
@@ -1210,3 +1390,35 @@ def generate_init_states(
                 bounds[:, 0] + step_size + np.random.uniform(size=(1, len(bounds))) * (bounds[:, 1] - bounds[:, 0])
             )
     return np.array(init_states)
+
+
+def mscatter(x, y, ax=None, m=None, **kw):
+    if not ax:
+        ax = plt.gca()
+    sc = ax.scatter(x, y, **kw)
+    if (m is not None) and (len(m) == len(x)):
+        paths = []
+        for marker in m:
+            if isinstance(marker, mmarkers.MarkerStyle):
+                marker_obj = marker
+            else:
+                marker_obj = mmarkers.MarkerStyle(marker)
+            path = marker_obj.get_path().transformed(marker_obj.get_transform())
+            paths.append(path)
+        sc.set_paths(paths)
+    return sc
+
+
+def make_segments(x, y):
+    points = np.array([x, y]).T.reshape(-1, 1, 2)
+    segments = np.concatenate([points[:-1], points[1:]], axis=1)
+    return segments
+
+def add_colorbar(fig, im, ax, axisfontsize):
+
+    cbar_ax = fig.add_axes(
+        [ax.get_position().xmax + 0.01, ax.get_position().ymin, 0.025, ax.get_position().ymax - ax.get_position().ymin]
+    )
+    cbar = fig.colorbar(im, cax=cbar_ax)
+    cbar_ax.yaxis.labelpad = 15
+    cbar.set_label("Temperature", rotation=270, fontsize=axisfontsize)

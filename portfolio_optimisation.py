@@ -17,6 +17,7 @@ os.environ["NUMEXPR_NUM_THREADS"] = "1"
 
 from adutils import setup_logger
 import numpy as np
+
 setup_logger()
 from pathlib import Path
 import logging
@@ -29,7 +30,7 @@ import pandas as pd
 
 engine = Engine(kind="multiproc")
 
-from adannealing import Annealer, plot
+from adannealing import Annealer
 from profiling.financial import (
     load_financial_configurations,
     LossPortfolioMeanVar,
@@ -54,7 +55,7 @@ logger = logging.getLogger(__name__)
     alpha,
     all_prices,
 ) = load_financial_configurations("profiling/run_configs_analytical_solution.json")
-limits = tuple(((0., 0.25), (-2.5, -2.)))
+limits = tuple(((0.0, 0.25), (-2.5, -2.0)))
 
 
 def run(number_isins, do_plot, verbose=True):
@@ -116,7 +117,7 @@ def run(number_isins, do_plot, verbose=True):
         alpha=alpha, stopping_limit=0.001, npoints=2, stop_at_first_found=True
     )
     tf = time() - t0
-    fig_hist, _ = plot(hpath, step_size=10, weights_names=chosen_isins, do_3d=True)
+    fig_hist, _ = ann.plot(hpath, step_size=10, weights_names=chosen_isins, do_3d=False)
     fig_hist.savefig(str(Path(path_save_images) / f"history_{number_isins}.pdf"))
 
     logger.info(f"date : {date}")
