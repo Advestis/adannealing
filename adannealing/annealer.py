@@ -669,9 +669,10 @@ class Annealer:
                 _, _, acc_ratio_2, _, _, _ = ann.fit(
                     temp_0=t2, iterations=1000, stopping_limit=None, verbose=False
                 )
-                self._debug(f"Attempt {attempts}")
-                self._debug(f"t1: {t1}, Acc. ratio : {acc_ratio_1} (fixed)")
-                self._debug(f"t2: {t2}, Acc. ratio : {acc_ratio_2}")
+                self._info(f"---------------------------------------------")
+                self._info(f"Attempt {attempts}")
+                self._info(f"t1: {t1}, Acc. ratio : {acc_ratio_1} (fixed)")
+                self._info(f"t2: {t2}, Acc. ratio : {acc_ratio_2}\n")
 
                 if ar_limit_low < acc_ratio_2 < ar_limit_up:
                     break

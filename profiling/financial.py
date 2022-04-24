@@ -2,6 +2,7 @@ import numpy as np
 import logging
 import json
 import pandas as pd
+import warnings
 
 logger = logging.getLogger(__name__)
 
@@ -184,7 +185,15 @@ def wall(lr, x, point, sharpness, height, speed):
 
 
 def sigmoid(x):
-    return 1.0 / (1.0 + np.exp(-x))
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        try:
+            val = 1.0 / (1.0 + np.exp(-x))
+        except RuntimeWarning:
+            val = 0.
+
+    return val
 
 
 def analy_optim_mean_var(
