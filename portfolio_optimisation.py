@@ -54,7 +54,7 @@ logger = logging.getLogger(__name__)
     step_size,
     alpha,
     all_prices,
-) = load_financial_configurations("profiling/run_configs_analytical_solution.json")
+) = load_financial_configurations("profiling/run_configs.json")
 limits = tuple(((0.0, 0.25), (-2.5, -2.0), (-2.5, -2.0), (-2.5, -2.0)))
 # TODO : set variance of weights for exploration related to constraints
 
@@ -93,7 +93,6 @@ def run(number_isins, verbose=True):
         sum_w_target=desired_norm,
         continous_window=continous_window,
         n=len(chosen_isins),
-        by_component=False,
     )
 
     bounds_min = np.full(shape=(1, number_isins), fill_value=-1.0)

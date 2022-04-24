@@ -333,8 +333,8 @@ class Annealer:
         annealing_type: str = "canonical",
         history_path: Optional[str] = None,
         loss_kwargs: Optional[dict] = None,
-        logger_level = None,
-        optimal_step_size = False
+        logger_level=None,
+        optimal_step_size=False,
     ):
         """
         Parameters
@@ -493,8 +493,8 @@ class Annealer:
 
         # Experimental
         if optimal_step_size:
-            self._info('optimal_step_size is True: this is experimental.')
-            self.weights_step_size = np.abs(self.bounds[:, 0] - self.bounds[:, 1])**2
+            self._info("optimal_step_size is True: this is experimental.")
+            self.weights_step_size = np.abs(self.bounds[:, 0] - self.bounds[:, 1]) ** 2
 
         if temp_0 is not None:
             if isinstance(temp_0, int):
@@ -795,21 +795,24 @@ class Annealer:
                 init_states = init_states.reshape(1, init_states.shape[0])
 
         if npoints == 1:
+            initialisation = self.init_states if init_states is None else init_states
+            self.loss.on_fit_start(initialisation)
             if annealing_type == "canonical":
-                return self._fit_one_canonical(
+                results = self._fit_one_canonical(
                     alpha,
                     temp_min,
                     temp_0,
                     iterations,
                     stopping_limit,
                     history_path,
-                    self.init_states if init_states is None else init_states,
+                    initialisation,
                     cooling_schedule,
                 )
             else:
-                return self._fit_one_micronanonical(
+                results = self._fit_one_micronanonical(
                     iterations, stopping_limit, history_path, init_states
                 )
+
         else:
             if self.bounds is None:
                 raise ValueError(
@@ -831,6 +834,7 @@ class Annealer:
                     for i in range(npoints)
                     if not (history_path / str(i)).is_dir()
                 ]
+            self.loss.on_fit_start(init_states)
             annealers = [
                 Annealer(
                     loss=self.loss,
@@ -858,12 +862,10 @@ class Annealer:
                 stop_at_first_found=stop_at_first_found,
                 history_path=history_path,
             )
-            self.results = results
 
-            # calling the loss method
-            self.loss.on_end_fit(results[0]
-                                 )
-            return results
+        self.results = results
+        self.loss.on_fit_end(results[0])
+        return results
 
     def _get_next_temperature(
         self,
@@ -984,6 +986,7 @@ class Annealer:
             )
 
         curr = init_states.copy()
+
         curr_loss = self.loss(curr.T, **loss_kwargs)
         while hasattr(curr_loss, "__len__") and len(curr_loss) == 1:
             curr_loss = curr_loss[0]
@@ -1596,7 +1599,7 @@ class Annealer:
                         symbol=list(
                             map(lambda val: "x" if val else "circle", accepted)
                         ),
-                    showscale=True,
+                        showscale=True,
                     ),
                     row=1,
                     col=1,

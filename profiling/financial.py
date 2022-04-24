@@ -22,7 +22,6 @@ class LossPortfolioMeanVar:
         sum_w_target: float,
         continous_window: bool,
         n: int,
-        by_component: bool = False,
     ):
 
         self.wt_1_np = wt_1_np
@@ -37,8 +36,11 @@ class LossPortfolioMeanVar:
         self.sum_w_target = sum_w_target
         self.continous_window = continous_window
         self.n = n
-        self.by_component = by_component
         self.common_shape = (n, 1)
+        self.first_call = False
+        self.final_call = False
+        self.init_loss_status = None
+        self.final_loss_status = None
 
         self.__setup()
 
@@ -83,11 +85,31 @@ class LossPortfolioMeanVar:
         else:
             self.penalty = lambda w: 0.0
 
-    def on_end_fit(self, best_fit):
+    def on_fit_end(self, best_fit):
+        
+        self.final_call = True
+        self.final_loss_status = self.__call__(best_fit)
+
+        if isinstance(self.init_loss_status, list):
+            logger.info("Code has run with several annealers. List of different intialian points:")
+            for i, initial_status in enumerate(self.final_loss_status):
+                logger.info(f"Initial Status Annealer {i}")
+                logger.info(initial_status)
+
+        elif isinstance(self.init_loss_status, dict):
+            logger.info("Initial Status components:")
+            logger.info(self.init_loss_status)
+
+        else:
+            raise RuntimeError('Unknown initial status loss.')
+
+        logger.info("Final loss components:")
+        logger.info(self.final_loss_status)
+
 
         if self.lambda_norm > 0:
             try:
-                assert np.isclose(np.sum(best_fit), self.sum_w_target)
+                assert np.isclose(np.sum(best_fit), self.sum_w_target, rtol=1e-2)
             except AssertionError:
                 logger.info(
                     "The solution DOES NOT respect the constraint on the sum of the components."
@@ -116,13 +138,30 @@ class LossPortfolioMeanVar:
                 - np.linalg.norm(best_fit, ord=1) ** 2 * self.sparsity_target
             )
             try:
-                assert np.isclose(sparse_term, 0.0)
+                assert np.isclose(sparse_term, 0.0, atol=1e-3)
             except AssertionError:
                 logger.info(
                     "The solution DOES NOT meet the requested level of sparsity."
                 )
             else:
                 logger.info("The solution DOES meet the requested level of sparsity.")
+                
+    def on_fit_start(self, initial_point):
+
+        if isinstance(initial_point, np.ndarray):
+            self.first_call = True
+            self.init_loss_status = self.__call__(initial_point)
+
+        elif isinstance(initial_point, list):
+            self.init_loss_status = []
+            for init in initial_point:
+                self.first_call = True
+                self.init_loss_status.append(self.__call__(init))
+
+        else:
+            raise RuntimeError('Unknown itialisation type')
+
+        self.first_call = False
 
     def __call__(self, wt_np):
         assert wt_np.shape == self.common_shape
@@ -141,18 +180,20 @@ class LossPortfolioMeanVar:
         sparse_term = self.lambda_sparse * sparse_term
         norm = norm * self.lambda_norm
 
-        if self.by_component:
-            logger.info("\n")
-            logger.info(f" [LOSS] return term : {return_term}")
-            logger.info(f" [LOSS] risk term : {risk_term}")
-            logger.info(f" [LOSS] fees term : {fees_term}")
-            logger.info(f" [LOSS] sparsity term : {sparse_term}")
-            logger.info(f" [LOSS] penalty term : {penalty}")
-            logger.info(f" [LOSS] norm term : {norm}")
+        logger.debug("\n")
+        logger.debug(f" [LOSS] return term : {return_term}")
+        logger.debug(f" [LOSS] risk term : {return_term}")
+        logger.debug(f" [LOSS] fees term : {fees_term}")
+        logger.debug(f" [LOSS] sparsity term : {sparse_term}")
+        logger.debug(f" [LOSS] penalty term : {penalty}")
+        logger.debug(f" [LOSS] norm term : {norm}")
 
-        loss = return_term + risk_term + fees_term + sparse_term + penalty + norm
+        if self.first_call or self.final_call:
+            return return_term, risk_term, fees_term, sparse_term, penalty, norm
 
-        return loss[0][0]
+        else:
+            loss = return_term + risk_term + fees_term + sparse_term + penalty + norm
+            return loss[0][0]
 
 
 def load_financial_configurations(path):
