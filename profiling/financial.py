@@ -76,6 +76,7 @@ class LossPortfolioMeanVar:
             self.penalty = lambda w: 0.0
 
     def __call__(self, wt_np):
+        # TODO: fix for overflow. It creates a RunTimeWarning.
         assert wt_np.shape == self.common_shape
         return_term = self.r_np.T.dot(wt_np)
         risk_term = 0.5 * wt_np.T.dot(self.cov_risk.dot(wt_np))

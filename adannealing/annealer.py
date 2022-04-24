@@ -1527,9 +1527,10 @@ class Annealer:
                 ann_solution[j] = wj
                 return self.loss(ann_solution)
 
-            objective_couples = [
-                lambda wi, wj: objective_2d(i, j, wi, wj) for (i, j) in i_couples
-            ]
+            # TODO : it should work, but it does not. Understand why
+            # objective_couples = [
+            #     lambda wi, wj: objective_2d(ii, jj, wi, wj) for (ii, jj) in i_couples
+            # ]
 
             # TODO : parallelise
             for i, (col, row) in enumerate(i_couples):
@@ -1538,10 +1539,8 @@ class Annealer:
 
                 fig_3d = make_subplots(rows=1, cols=1, specs=specs)
 
-                if col == 0:
-                    fig_3d.update_yaxes(title_text=weights_names[row], row=1, col=1)
-                if row == nweights - 1:
-                    fig_3d.update_xaxes(title_text=weights_names[col], row=1, col=1)
+                fig_3d.update_yaxes(title_text=weights_names[row], row=1, col=1)
+                fig_3d.update_xaxes(title_text=weights_names[col], row=1, col=1)
 
                 explored_w_y = weights[:, row]
                 explored_w_x = weights[:, col]
@@ -1549,12 +1548,10 @@ class Annealer:
                 w_y = np.linspace(np.min(explored_w_y), np.max(explored_w_y), 100)
                 w_x = np.linspace(np.min(explored_w_x), np.max(explored_w_x), 100)
 
-                domain = pd.DataFrame(
-                    data=np.zeros((len(w_x), len(w_y))), index=w_y, columns=w_x
-                )
+                domain = pd.DataFrame(data=np.zeros((100, 100)), index=w_y, columns=w_x)
                 for wy in domain.index:
                     for wx in domain.columns:
-                        domain.loc[wy, wx] = objective_couples[i](wx, wy)
+                        domain.loc[wy, wx] = objective_2d(col, row, wx, wy)
 
                 fig_3d.add_trace(
                     go.Surface(
@@ -1571,8 +1568,8 @@ class Annealer:
 
                 z_explored = np.zeros_like(temps)
                 for k in range(len(temps)):
-                    z_explored[k] = objective_couples[i](
-                        explored_w_x[k], explored_w_y[k]
+                    z_explored[k] = objective_2d(
+                        col, row, explored_w_x[k], explored_w_y[k]
                     )
 
                 fig_3d.add_scatter3d(
@@ -1594,8 +1591,8 @@ class Annealer:
 
                 fig_3d.add_scatter3d(
                     # for some reason, need to transpose
-                    x=[self.results[0][0]],
-                    y=[self.results[0][1]],
+                    x=[self.results[0][col]],
+                    y=[self.results[0][row]],
                     z=[self.results[1]],
                     mode="markers",
                     marker=dict(
@@ -1610,14 +1607,14 @@ class Annealer:
                 fig_3d.update_layout(
                     scene=dict(
                         xaxis_title=weights_names[col],
-                        yaxis_title=weights_names[col],
+                        yaxis_title=weights_names[row],
                     )
                 )
 
                 fig_3d.write_html(
                     str(
                         sampler_path
-                        / f"3d_visualisation_{weights_names[col]}_{weights_names[col]}.html"
+                        / f"3d_visualisation_{weights_names[col]}_{weights_names[row]}.html"
                     )
                 )
 
