@@ -59,7 +59,7 @@ limits = tuple(((0.0, 0.25), (-2.5, -2.0), (-2.5, -2.0), (-2.5, -2.0)))
 # TODO : set variance of weights for exploration related to constraints
 
 
-def run(number_isins, do_plot, verbose=True):
+def run(number_isins, verbose=True):
 
     logger.info("")
     logger.info(f"Starting annealing profiler with {number_isins} isins...")
@@ -113,6 +113,7 @@ def run(number_isins, do_plot, verbose=True):
         iterations=n_iterations,
         verbose=verbose,
         history_path=str(hpath),
+        logger_level='DEBUG'
     )
     numerical_solution, val_at_best, _, hist, final_hist, _ = ann.fit(
         alpha=alpha, stopping_limit=0.001, npoints=2, stop_at_first_found=True

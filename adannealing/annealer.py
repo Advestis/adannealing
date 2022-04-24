@@ -18,9 +18,6 @@ import matplotlib.markers as mmarkers
 from plotly.subplots import make_subplots
 import itertools
 
-logger = logging.getLogger(__name__)
-
-
 import pandas as pd
 
 from .plotting import Sampler, SamplePoint
@@ -336,6 +333,7 @@ class Annealer:
         annealing_type: str = "canonical",
         history_path: Optional[str] = None,
         loss_kwargs: Optional[dict] = None,
+        logger_level = None,
     ):
         """
         Parameters
@@ -381,6 +379,9 @@ class Annealer:
         The number of iterations will be equal to int((temp_0 - temp_min) / temp_step_size).
         If temp_step_size is not specified, then the number of iterations is equal to 200. (0.5% at each step).
         """
+        if logger_level is not None:
+            global logger
+            logger.setLevel(logger_level)
 
         if annealing_type != "canonical" and annealing_type != "microcanonical":
             raise ValueError(
@@ -666,7 +667,7 @@ class Annealer:
                         f"and {ar_limit_up} in less than {max_attempts} attempts"
                     )
                 _, _, acc_ratio_2, _, _, _ = ann.fit(
-                    temp_0=t2, stopping_limit=None, verbose=False
+                    temp_0=t2, iterations=1000, stopping_limit=None, verbose=False
                 )
                 self._debug(f"Attempt {attempts}")
                 self._debug(f"t1: {t1}, Acc. ratio : {acc_ratio_1} (fixed)")
