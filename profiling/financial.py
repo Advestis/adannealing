@@ -60,7 +60,9 @@ class LossPortfolioMeanVar:
                     self.penalty = lambda w: np.sum(
                         [
                             continuous_constraint(w[i], point_low, point_high)
-                            for i, (point_low, point_high) in enumerate(self.constraints)
+                            for i, (point_low, point_high) in enumerate(
+                                self.constraints
+                            )
                             if i in not_none
                         ]
                     )
@@ -68,7 +70,9 @@ class LossPortfolioMeanVar:
                     self.penalty = lambda w: np.sum(
                         [
                             non_continuous_constraint(w[i], point_low, point_high)
-                            for i, (point_low, point_high) in enumerate(self.constraints)
+                            for i, (point_low, point_high) in enumerate(
+                                self.constraints
+                            )
                             if i in not_none
                         ]
                     )
@@ -79,13 +83,56 @@ class LossPortfolioMeanVar:
         else:
             self.penalty = lambda w: 0.0
 
-    def __call__(self, wt_np):
+    def on_end_fit(self, best_fit):
 
+        if self.lambda_norm > 0:
+            try:
+                assert np.isclose(np.sum(best_fit), self.sum_w_target)
+            except AssertionError:
+                logger.info(
+                    "The solution DOES NOT respect the constraint on the sum of the components."
+                )
+            else:
+                logger.info(
+                    "The solution DOES respect the constraint on the sum of the components."
+                )
+
+        if self.constraints is not None:
+            try:
+                assert all(
+                    map(
+                        lambda a: a[0] > a[1][0] and a[0] < a[1][1],
+                        zip(best_fit, self.constraints),
+                    )
+                )
+            except AssertionError:
+                logger.info("The solution DOES NOT respect the constraints.")
+            else:
+                logger.info("The solution DOES respect the constraints.")
+
+        if self.lambda_sparse:
+            sparse_term = (
+                np.linalg.norm(best_fit) ** 2
+                - np.linalg.norm(best_fit, ord=1) ** 2 * self.sparsity_target
+            )
+            try:
+                assert np.isclose(sparse_term, 0.0)
+            except AssertionError:
+                logger.info(
+                    "The solution DOES NOT meet the requested level of sparsity."
+                )
+            else:
+                logger.info("The solution DOES meet the requested level of sparsity.")
+
+    def __call__(self, wt_np):
         assert wt_np.shape == self.common_shape
         return_term = self.r_np.T.dot(wt_np)
         risk_term = 0.5 * wt_np.T.dot(self.cov_risk.dot(wt_np))
         fees_term = np.abs(wt_np - self.wt_1_np).T.dot(self.fees)
-        sparse_term = np.linalg.norm(wt_np) ** 2 - np.linalg.norm(wt_np, ord=1) ** 2 * self.sparsity_target
+        sparse_term = (
+            np.linalg.norm(wt_np) ** 2
+            - np.linalg.norm(wt_np, ord=1) ** 2 * self.sparsity_target
+        )
         penalty = self.penalty(wt_np)
         norm = np.abs(np.linalg.norm(wt_np, ord=1) - self.sum_w_target)
 
@@ -194,13 +241,18 @@ def sigmoid(x):
         try:
             val = 1.0 / (1.0 + np.exp(-x))
         except RuntimeWarning:
-            val = 0.
+            val = 0.0
 
     return val
 
 
 def analy_optim_mean_var(
-    r_np: np.array, risk_coeff: float, cov_np: np.array, n: int, cut: float = None, return_cond: bool = False
+    r_np: np.array,
+    risk_coeff: float,
+    cov_np: np.array,
+    n: int,
+    cut: float = None,
+    return_cond: bool = False,
 ):
 
     common_shape = (n, 1)

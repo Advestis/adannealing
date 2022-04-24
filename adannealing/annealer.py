@@ -859,6 +859,10 @@ class Annealer:
                 history_path=history_path,
             )
             self.results = results
+
+            # calling the loss method
+            self.loss.on_end_fit(results[0]
+                                 )
             return results
 
     def _get_next_temperature(
