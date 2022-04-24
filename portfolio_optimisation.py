@@ -117,7 +117,7 @@ def run(number_isins, verbose=True):
         optimal_step_size=True # experimental
     )
     numerical_solution, val_at_best, _, hist, final_hist, _ = ann.fit(
-        alpha=alpha, stopping_limit=0.001, npoints=2, stop_at_first_found=True
+        alpha=alpha, stopping_limit=0.001, npoints=1, stop_at_first_found=True
     )
     tf = time() - t0
     ann.plot(hpath, step_size=10, weights_names=chosen_isins, do_3d=True)

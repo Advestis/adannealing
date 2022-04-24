@@ -152,7 +152,7 @@ class LossPortfolioMeanVar:
             self.first_call = True
             self.init_loss_status = self.__call__(initial_point)
 
-        elif isinstance(initial_point, list):
+        elif isinstance(initial_point, tuple):
             self.init_loss_status = []
             for init in initial_point:
                 self.first_call = True
@@ -164,7 +164,15 @@ class LossPortfolioMeanVar:
         self.first_call = False
 
     def __call__(self, wt_np):
-        assert wt_np.shape == self.common_shape
+        try:
+            assert wt_np.shape == self.common_shape
+        except AssertionError:
+            try:
+                wt_np = wt_np.T
+                assert wt_np.shape == self.common_shape
+            except AssertionError:
+                raise RuntimeError('Input shape is wrong even if transposed.')
+
         return_term = self.r_np.T.dot(wt_np)
         risk_term = 0.5 * wt_np.T.dot(self.cov_risk.dot(wt_np))
         fees_term = np.abs(wt_np - self.wt_1_np).T.dot(self.fees)
