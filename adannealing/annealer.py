@@ -334,6 +334,7 @@ class Annealer:
         history_path: Optional[str] = None,
         loss_kwargs: Optional[dict] = None,
         logger_level = None,
+        optimal_step_size = False
     ):
         """
         Parameters
@@ -382,6 +383,12 @@ class Annealer:
         if logger_level is not None:
             global logger
             logger.setLevel(logger_level)
+
+        if not isinstance(verbose, bool):
+            raise TypeError(
+                f"'verbose' must be a boolean, got {type(verbose)} instead."
+            )
+        self.verbose = verbose
 
         if annealing_type != "canonical" and annealing_type != "microcanonical":
             raise ValueError(
@@ -484,6 +491,11 @@ class Annealer:
             )
         self.weights_step_size = weights_step_size
 
+        # Experimental
+        if optimal_step_size:
+            self._info('optimal_step_size is True: this is experimental.')
+            self.weights_step_size = np.abs(self.bounds[:, 0] - self.bounds[:, 1])**2
+
         if temp_0 is not None:
             if isinstance(temp_0, int):
                 temp_0 = float(temp_0)
@@ -516,12 +528,6 @@ class Annealer:
             if not (0 < alpha <= 1):
                 raise ValueError("'alpha' must be between 0 excluded and 1.")
         self.alpha = alpha
-
-        if not isinstance(verbose, bool):
-            raise TypeError(
-                f"'verbose' must be a boolean, got {type(verbose)} instead."
-            )
-        self.verbose = verbose
 
         if not isinstance(iterations, int) or iterations <= 0:
             raise ValueError(
@@ -1586,11 +1592,13 @@ class Annealer:
                         symbol=list(
                             map(lambda val: "x" if val else "circle", accepted)
                         ),
+                    showscale=True,
                     ),
                     row=1,
                     col=1,
                 )
 
+                # TODO : add title to colorbar
                 fig_3d.add_scatter3d(
                     # for some reason, need to transpose
                     x=[self.results[0][col]],
@@ -1601,6 +1609,7 @@ class Annealer:
                         size=3,
                         color="red",
                         symbol="circle",
+                        showscale=False,
                     ),
                     row=1,
                     col=1,

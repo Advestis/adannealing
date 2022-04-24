@@ -51,6 +51,9 @@ class LossPortfolioMeanVar:
             assert len(self.constraints) == self.n
 
         if self.constraints is not None:
+            # TODO : set height in penalty in a dynamic way
+            # TODO : I would like the annealer to spend more time in the feasable region
+            # TODO : not just towards the end of the run (at low temperatures)
             not_none = np.where([lim != (None, None) for lim in self.constraints])[0]
             if len(not_none) > 0:
                 if self.continous_window:
@@ -77,7 +80,7 @@ class LossPortfolioMeanVar:
             self.penalty = lambda w: 0.0
 
     def __call__(self, wt_np):
-        # TODO: fix for overflow. It creates a RunTimeWarning.
+
         assert wt_np.shape == self.common_shape
         return_term = self.r_np.T.dot(wt_np)
         risk_term = 0.5 * wt_np.T.dot(self.cov_risk.dot(wt_np))

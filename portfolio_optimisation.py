@@ -113,7 +113,9 @@ def run(number_isins, verbose=True):
         iterations=n_iterations,
         verbose=verbose,
         history_path=str(hpath),
-        logger_level='INFO'
+        logger_level='INFO',
+        # TODO: test more this experimental feature
+        optimal_step_size=True # experimental
     )
     numerical_solution, val_at_best, _, hist, final_hist, _ = ann.fit(
         alpha=alpha, stopping_limit=0.001, npoints=2, stop_at_first_found=True
