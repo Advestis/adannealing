@@ -7,15 +7,17 @@ def wrong_loss(x, y) -> float:
     return (x ** 2 + y ** 2) ** 2 - (x ** 2 + y ** 2)
 
 
-def loss_func(w) -> float:
-    x = w[0]
-    return (x - 5) * (x - 2) * (x - 1) * x
+class loss_func:
+    def __call__(w) -> float:
+        x = w[0]
+        return (x - 5) * (x - 2) * (x - 1) * x
 
 
-def loss_func_2d(w) -> float:
-    x = w[0]
-    y = w[1]
-    return (x - 5) * (x - 2) * (x - 1) * x + 10 * y ** 2
+class loss_func_2d:
+    def __call__(w) -> float:
+        x = w[0]
+        y = w[1]
+        return (x - 5) * (x - 2) * (x - 1) * x + 10 * y ** 2
 
 
 # noinspection PyTypeChecker
@@ -41,7 +43,7 @@ def loss_func_2d(w) -> float:
             None,
             None,
             None,
-            None,
+            False,
             TypeError,
             "The loss function must be callable",
         ),
@@ -54,7 +56,7 @@ def loss_func_2d(w) -> float:
             None,
             None,
             None,
-            None,
+            False,
             ValueError,
             "The loss function must accept exactly 1 parameter(s)",
         ),
@@ -67,7 +69,7 @@ def loss_func_2d(w) -> float:
             None,
             None,
             None,
-            None,
+            False,
             TypeError,
             "'weights_step_size' can not be None",
         ),
@@ -80,7 +82,7 @@ def loss_func_2d(w) -> float:
             0,
             0.85,
             None,
-            None,
+            False,
             TypeError,
             "'iterations' can not be None",
         ),
@@ -106,7 +108,7 @@ def loss_func_2d(w) -> float:
             0,
             0.85,
             1000,
-            None,
+            False,
             ValueError,
             "'bounds' dimension should be (any, 2), got ",
         ),
@@ -119,7 +121,7 @@ def loss_func_2d(w) -> float:
             0,
             0.85,
             1000,
-            None,
+            False,
             ValueError,
             "'bounds' dimension should be (any, 2), got ",
         ),
@@ -132,7 +134,7 @@ def loss_func_2d(w) -> float:
             0,
             0.85,
             1000,
-            None,
+            False,
             ValueError,
             "Bounds are not valid",
         ),
@@ -145,7 +147,7 @@ def loss_func_2d(w) -> float:
             0,
             0.85,
             1000,
-            None,
+            False,
             ValueError,
             "Shape of 'weights_step_size' should be (1,)",
         ),
