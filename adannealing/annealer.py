@@ -681,6 +681,9 @@ class Annealer:
         if annealing_type != "canonical" and annealing_type != "microcanonical":
             raise ValueError(f"Unknown annealing type '{annealing_type}'. Can be 'canonical' or 'microcanonical'")
 
+        if annealing_type == 'microcanonical':
+            raise NotImplementedError
+
         if alpha is None:
             alpha = self.alpha
 
