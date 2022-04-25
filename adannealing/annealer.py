@@ -838,7 +838,7 @@ class Annealer:
                     if not (history_path / str(i)).is_dir()
                 ]
             if not searching_t:
-                self.loss.on_fit_start(init_states)
+                self.loss.on_fit_start(tuple(init_states))
             annealers = [
                 Annealer(
                     loss=self.loss,
@@ -991,7 +991,6 @@ class Annealer:
             )
 
         curr = init_states.copy()
-
         curr_loss = self.loss(curr.T, **loss_kwargs)
         while hasattr(curr_loss, "__len__") and len(curr_loss) == 1:
             curr_loss = curr_loss[0]
@@ -1203,6 +1202,9 @@ class Annealer:
             )
         if iterations is None or not isinstance(iterations, int) or iterations <= 0:
             raise ValueError("Number of iterations must be an integer greater than 0")
+
+        # needed for compatibility with _fit_many()
+        init_states = init_states.reshape(-1, 1)
 
         self._info(f"Starting temp : {round(temp_0, 3)}")
         temp = temp_0

@@ -55,7 +55,7 @@ logger = logging.getLogger(__name__)
     alpha,
     all_prices,
 ) = load_financial_configurations("profiling/run_configs.json")
-limits = tuple(((0.0, 0.25), (-2.5, -2.0))) #, (-2.5, -2.0), (-2.5, -2.0)))
+limits = tuple(((0.0, 0.25), (-2.5, -2.0)))#, (-2.5, -2.0), (-2.5, -2.0), (-2.5, -2.0)))
 # TODO : set variance of weights for exploration related to constraints
 
 

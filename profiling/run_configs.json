@@ -9,7 +9,7 @@
   "desired_norm": 1,
   "continous_window": "True",
   "sparsity": 0.25,
-  "n_iterations": 1000,
+  "n_iterations": 100000,
   "step_size": 1e-2,
   "alpha": 0.999,
   "date_start": "2021-01-01",

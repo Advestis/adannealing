@@ -89,9 +89,9 @@ class LossPortfolioMeanVar:
 
         if isinstance(self.init_loss_status, list):
             logger.info("Code has run with several annealers. List of different intialian points:")
-            for i, initial_status in enumerate(self.final_loss_status):
+            for i, initial_status in enumerate(self.init_loss_status):
                 logger.info(f"Initial Status Annealer {i}")
-                logger.info(initial_status)
+                logger.info(initial_status['status'])
 
         elif isinstance(self.init_loss_status, dict):
             logger.info("Initial Status components:")
@@ -141,9 +141,9 @@ class LossPortfolioMeanVar:
 
         elif isinstance(initial_point, tuple):
             self.init_loss_status = []
-            for init in initial_point:
+            for i, init in enumerate(initial_point):
                 self.first_call = True
-                self.init_loss_status.append(self.__call__(init.reshape(-1, 1)))
+                self.init_loss_status.append({"annaler": i, "status": self.__call__(init.reshape(-1, 1))})
 
         else:
             raise RuntimeError("Unknown itialisation type")
