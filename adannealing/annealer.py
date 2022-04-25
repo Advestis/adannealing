@@ -724,7 +724,6 @@ class Annealer:
 
         if npoints == 1:
             initialisation = self.init_states if init_states is None else init_states
-            initialisation = initialisation.T
             if not searching_t:
                 self.loss.on_fit_start(initialisation)
             if annealing_type == "canonical":
@@ -786,7 +785,7 @@ class Annealer:
 
         self.results = results
         if not searching_t:
-            self.loss.on_fit_end(results[0])
+            self.loss.on_fit_end(results)
         return results
 
     def _get_next_temperature(
@@ -846,7 +845,7 @@ class Annealer:
         np.fill_diagonal(cov, self.weights_step_size)
         candidate = np.random.multivariate_normal(mean=curr.ravel(), cov=cov).reshape(curr.shape)
 
-        candidate_loss = self.loss(candidate.T, **loss_kwargs)
+        candidate_loss = self.loss(candidate, **loss_kwargs)
         if hasattr(candidate_loss, "__len__") and len(candidate_loss) == 1:
             candidate_loss = candidate_loss[0]
         if not isinstance(candidate_loss, (int, float)):
@@ -874,6 +873,7 @@ class Annealer:
 
         if init_states is None:
             init_states = self.init_states
+        init_states = init_states.reshape(-1, 1)
 
         if loss_kwargs is None:
             loss_kwargs = self.loss_kwargs
@@ -891,7 +891,7 @@ class Annealer:
             raise ValueError("Number of outer iterations must be an integer greater than 0")
 
         curr = init_states.copy()
-        curr_loss = self.loss(curr.T, **loss_kwargs)
+        curr_loss = self.loss(curr, **loss_kwargs)
         while hasattr(curr_loss, "__len__") and len(curr_loss) == 1:
             curr_loss = curr_loss[0]
         if not isinstance(curr_loss, (int, float)):
@@ -928,7 +928,7 @@ class Annealer:
 
             acc_ratio = float(points_accepted) / float(i_ + 1)
             sample = SamplePoint(
-                weights=candidate[0],
+                weights=candidate.T[0],
                 iteration=i_,
                 accepted=accepted,
                 loss=candidate_loss,
@@ -961,7 +961,6 @@ class Annealer:
                         curr, curr_loss, acc_ratio, last_index = finish(finishing_history)
                         # noinspection PyProtectedMember
                         finishing_history = Sampler(finishing_history._data.iloc[[last_index]])
-                        curr = curr.reshape(1, curr.shape[0])
                         finished = True
                         break
                 else:
@@ -980,7 +979,7 @@ class Annealer:
             history.data.to_csv(Path(history_path) / "history.csv")
             finishing_history.data.to_csv(Path(history_path) / "result.csv")
 
-        return curr[0], curr_loss, acc_ratio, history, finishing_history, finished
+        return curr, curr_loss, acc_ratio, history, finishing_history, finished
 
     def _fit_one_canonical(
         self,
@@ -1070,6 +1069,8 @@ class Annealer:
 
         if init_states is None:
             init_states = self.init_states
+        # loss callables work with vertical vectors, while Annealer class works with horizontal vectors
+        init_states = init_states.reshape(-1, 1)
 
         if cooling_schedule is None:
             cooling_schedule = self.cooling_schedule
@@ -1090,9 +1091,6 @@ class Annealer:
             raise ValueError(f"'t0' must be a float greater than tmin, got {temp_0} <= {temp_min}")
         if iterations is None or not isinstance(iterations, int) or iterations <= 0:
             raise ValueError("Number of iterations must be an integer greater than 0")
-
-        # needed for compatibility with _fit_many()
-        init_states = init_states.reshape(-1, 1)
 
         self._info(f"Starting temp : {round(temp_0, 3)}")
         temp = temp_0
@@ -1140,7 +1138,7 @@ class Annealer:
 
             acc_ratio = float(points_accepted) / float(i_ + 1)
             sample = SamplePoint(
-                weights=candidate,
+                weights=candidate.T[0],
                 iteration=i_,
                 accepted=accepted,
                 loss=candidate_loss,
@@ -1483,8 +1481,8 @@ class Annealer:
                 # TODO : add title to colorbar
                 fig_3d.add_scatter3d(
                     # for some reason, need to transpose
-                    x=[self.results[0][col][0]],
-                    y=[self.results[0][row][0]],
+                    x=[self.results[0][col]],
+                    y=[self.results[0][row]],
                     z=[self.results[1]],
                     mode="markers",
                     marker=dict(
@@ -1583,7 +1581,9 @@ def generate_init_states(
     if npoints > init_states_indexes.shape[0]:
         for _ in range(npoints - len(init_states)):
             init_states.append(
-                bounds[:, 0] + step_size + np.random.uniform(size=(1, len(bounds))) * (bounds[:, 1] - bounds[:, 0])
+                (bounds[:, 0] + step_size + np.random.uniform(size=(1, len(bounds))) * (bounds[:, 1] - bounds[:, 0]))[
+                    0
+                ].tolist()
             )
     return np.array(init_states)
 

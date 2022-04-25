@@ -23,7 +23,6 @@ class LossFunc:
         self.common_shape = None
 
     def __call__(self, w) -> float:
-        w = w.reshape(-1, 1)
         x = w[0]
         return (x - 5) * (x - 2) * (x - 1) * x
 
@@ -39,7 +38,6 @@ class LossFunc2D:
         self.constraints = None
 
     def __call__(self, w) -> float:
-        w = w.reshape(-1, 1)
         x = w[0]
         y = w[1]
         return (x - 5) * (x - 2) * (x - 1) * x + 10 * y ** 2

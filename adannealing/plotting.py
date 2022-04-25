@@ -62,9 +62,7 @@ class Sampler:
     def weights(self):
         if self._data.empty or len(self._data.index) != len(self):
             self._process()
-        return pd.DataFrame(
-            index=self._data.index, data=np.array([w for w in self._data.loc[:, "weights"].values])[:, :, 0]
-        )
+        return pd.DataFrame(index=self._data.index, data=np.array([w for w in self._data.loc[:, "weights"].values]))
 
     @property
     def acc_ratios(self):

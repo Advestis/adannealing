@@ -44,6 +44,37 @@ class LossPortfolioMeanVar:
 
         self.__setup()
 
+    def check_solution(self, solution):
+        if self.lambda_norm > 0:
+            try:
+                assert np.isclose(np.sum(solution), self.sum_w_target, rtol=1e-2)
+            except AssertionError:
+                logger.info("The solution DOES NOT respect the constraint on the sum of the components.")
+            else:
+                logger.info("The solution DOES respect the constraint on the sum of the components.")
+
+        if self.constraints is not None:
+            try:
+                assert all(
+                    map(
+                        lambda a: a[0] > a[1][0] and a[0] < a[1][1],
+                        zip(solution, self.constraints),
+                    )
+                )
+            except AssertionError:
+                logger.info("The solution DOES NOT respect the constraints.")
+            else:
+                logger.info("The solution DOES respect the constraints.")
+
+        if self.lambda_sparse:
+            sparse_term = np.linalg.norm(solution) ** 2 - np.linalg.norm(solution, ord=1) ** 2 * self.sparsity_target
+            try:
+                assert np.isclose(sparse_term, 0.0, atol=1e-3)
+            except AssertionError:
+                logger.info("The solution DOES NOT meet the requested level of sparsity.")
+            else:
+                logger.info("The solution DOES meet the requested level of sparsity.")
+
     def __setup(self):
         assert self.wt_1_np.shape == self.common_shape
         assert self.r_np.shape == self.common_shape
@@ -84,60 +115,44 @@ class LossPortfolioMeanVar:
     def on_fit_end(self, best_fit):
 
         self.final_call = True
-        self.final_loss_status = self.__call__(best_fit)
-        self.final_call = False
 
         if isinstance(self.init_loss_status, list):
-            logger.info("Code has run with several annealers. List of different intialian points:")
+            logger.info("Code has run with several annealers. List of different inital points:")
             for i, initial_status in enumerate(self.init_loss_status):
-                logger.info(f"Initial Status Annealer {i}")
+                logger.info(f"------Initial Status Annealer {i}------")
                 logger.info(initial_status["status"])
 
         elif isinstance(self.init_loss_status, dict):
-            logger.info("Initial Status components:")
+            logger.info("------Initial Status components------")
             logger.info(self.init_loss_status)
 
         else:
             raise RuntimeError("Unknown initial status loss.")
 
         logger.info("Final loss components:")
-        logger.info(self.final_loss_status)
 
-        if self.lambda_norm > 0:
-            try:
-                assert np.isclose(np.sum(best_fit), self.sum_w_target, rtol=1e-2)
-            except AssertionError:
-                logger.info("The solution DOES NOT respect the constraint on the sum of the components.")
-            else:
-                logger.info("The solution DOES respect the constraint on the sum of the components.")
+        if isinstance(best_fit, list):
+            logger.info("Code has reached the end with several annealers. List of different final points:")
+            for i, final_status in enumerate(best_fit):
+                logger.info(f"------Final Status Annealer {i}-------")
+                logger.info(self.__call__(final_status[0].reshape(-1, 1)))
+                self.check_solution(final_status[0].reshape(-1, 1))
 
-        if self.constraints is not None:
-            try:
-                assert all(
-                    map(
-                        lambda a: a[0] > a[1][0] and a[0] < a[1][1],
-                        zip(best_fit, self.constraints),
-                    )
-                )
-            except AssertionError:
-                logger.info("The solution DOES NOT respect the constraints.")
-            else:
-                logger.info("The solution DOES respect the constraints.")
+        elif isinstance(best_fit, tuple):
+            logger.info("------Single Final Status components------")
+            logger.info(self.__call__(best_fit[0].reshape(-1,1)))
+            self.check_solution(best_fit[0].reshape(-1, 1))
 
-        if self.lambda_sparse:
-            sparse_term = np.linalg.norm(best_fit) ** 2 - np.linalg.norm(best_fit, ord=1) ** 2 * self.sparsity_target
-            try:
-                assert np.isclose(sparse_term, 0.0, atol=1e-3)
-            except AssertionError:
-                logger.info("The solution DOES NOT meet the requested level of sparsity.")
-            else:
-                logger.info("The solution DOES meet the requested level of sparsity.")
+        else:
+            raise RuntimeError("Unknown final status loss.")
+
+        self.final_call = False
 
     def on_fit_start(self, initial_point):
 
         if isinstance(initial_point, np.ndarray):
             self.first_call = True
-            self.init_loss_status = self.__call__(initial_point)
+            self.init_loss_status = self.__call__(initial_point.reshape(-1, 1))
 
         elif isinstance(initial_point, tuple):
             self.init_loss_status = []
@@ -151,14 +166,8 @@ class LossPortfolioMeanVar:
         self.first_call = False
 
     def __call__(self, wt_np):
-        try:
-            assert wt_np.shape == self.common_shape
-        except AssertionError:
-            try:
-                wt_np = wt_np.T
-                assert wt_np.shape == self.common_shape
-            except AssertionError:
-                raise RuntimeError("Input shape is wrong even if transposed.")
+
+        assert wt_np.shape == self.common_shape
 
         return_term = self.r_np.T.dot(wt_np)[0][0]
         risk_term = 0.5 * wt_np.T.dot(self.cov_risk.dot(wt_np))[0][0]
