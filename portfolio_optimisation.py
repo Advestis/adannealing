@@ -55,7 +55,7 @@ logger = logging.getLogger(__name__)
     alpha,
     all_prices,
 ) = load_financial_configurations("profiling/run_configs.json")
-limits = tuple(((0.0, 0.25), (-2.5, -2.0)))  # , (-2.5, -2.0), (-2.5, -2.0), (-2.5, -2.0)))
+limits = tuple(((0.0, 0.25), (-2.5, -2.0) , (-2.5, -2.0), (-2.5, -2.0), (-2.5, -2.0)))
 # TODO : set variance of weights for exploration related to constraints
 
 
@@ -117,7 +117,7 @@ def run(number_isins, verbose=True):
         optimal_step_size=True,  # experimental
     )
     numerical_solution, val_at_best, _, hist, final_hist, _ = ann.fit(
-        alpha=alpha, stopping_limit=0.001, npoints=3, stop_at_first_found=True, annealing_type='microcanonical'
+        alpha=alpha, stopping_limit=0.001, npoints=20, stop_at_first_found=True
     )
     tf = time() - t0
     ann.plot(hpath, step_size=10, weights_names=chosen_isins, do_3d=True)

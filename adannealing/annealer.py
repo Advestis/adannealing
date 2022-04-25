@@ -780,6 +780,7 @@ class Annealer:
                 for i in range(npoints)
             ]
             # noinspection PyUnboundLocalVariable
+            # TODO : the research for the start temperature can be done once for all annealers
             results = Annealer._fit_many(
                 annealers,
                 stop_at_first_found=stop_at_first_found,
