@@ -3,7 +3,7 @@ import numpy as np
 from adannealing import Annealer
 
 
-class wrong_loss:
+class WrongLoss:
     def __init__(self):
         self.constraints = None
 
@@ -17,11 +17,10 @@ class wrong_loss:
         pass
 
 
-class loss_func:
+class LossFunc:
     def __init__(self):
         self.constraints = None
         self.common_shape = None
-
 
     def __call__(self, w) -> float:
         w = w.reshape(-1, 1)
@@ -35,7 +34,7 @@ class loss_func:
         pass
 
 
-class loss_func_2d:
+class LossFunc2D:
     def __init__(self):
         self.constraints = None
 
@@ -80,7 +79,7 @@ class loss_func_2d:
             "The loss function must be callable",
         ),
         (
-            wrong_loss(),
+            WrongLoss(),
             None,
             None,
             None,
@@ -93,7 +92,7 @@ class loss_func_2d:
             "The loss function must accept exactly 1 parameter(s)",
         ),
         (
-            loss_func(),
+            LossFunc(),
             None,
             None,
             None,
@@ -106,7 +105,7 @@ class loss_func_2d:
             "'weights_step_size' can not be None",
         ),
         (
-            loss_func(),
+            LossFunc(),
             np.array([1]),
             None,
             None,
@@ -119,7 +118,7 @@ class loss_func_2d:
             "'iterations' can not be None",
         ),
         (
-            loss_func(),
+            LossFunc(),
             np.array([1]),
             None,
             None,
@@ -132,7 +131,7 @@ class loss_func_2d:
             "At least one of 'init_states' and 'bounds' must be specified",
         ),
         (
-            loss_func(),
+            LossFunc(),
             np.array([1, 1]),
             np.array([-10, 10]),
             None,
@@ -145,7 +144,7 @@ class loss_func_2d:
             "'bounds' dimension should be (any, 2), got ",
         ),
         (
-            loss_func(),
+            LossFunc(),
             np.array([1, 1]),
             np.array([[-10, 10, 0]]),
             None,
@@ -158,7 +157,7 @@ class loss_func_2d:
             "'bounds' dimension should be (any, 2), got ",
         ),
         (
-            loss_func(),
+            LossFunc(),
             np.array([1, 1]),
             np.array([[10, -10]]),
             None,
@@ -171,7 +170,7 @@ class loss_func_2d:
             "Bounds are not valid",
         ),
         (
-            loss_func(),
+            LossFunc(),
             np.array([1, 1]),
             np.array([[-10, 10]]),
             None,
@@ -184,7 +183,7 @@ class loss_func_2d:
             "Shape of 'weights_step_size' should be (1,)",
         ),
         (
-            loss_func(),
+            LossFunc(),
             1,
             np.array([(-10, 10), (-10, 10)]),
             None,
@@ -197,7 +196,7 @@ class loss_func_2d:
             "",
         ),
         (
-            loss_func(),
+            LossFunc(),
             (1, 1),
             np.array([(-10, 10), (-10, 10)]),
             None,
@@ -210,7 +209,7 @@ class loss_func_2d:
             "",
         ),
         (
-            loss_func(),
+            LossFunc(),
             np.array((1, 1)),
             np.array([(-10, 10), (-10, 10)]),
             None,
@@ -223,7 +222,7 @@ class loss_func_2d:
             "",
         ),
         (
-            loss_func(),
+            LossFunc(),
             [1, 1],
             np.array([(-10, 10), (-10, 10)]),
             None,
@@ -236,7 +235,7 @@ class loss_func_2d:
             "",
         ),
         (
-            loss_func(),
+            LossFunc(),
             [1, np.nan],
             np.array([(-10, 10), (-10, 10)]),
             None,
@@ -249,7 +248,7 @@ class loss_func_2d:
             "can not contain NANs",
         ),
         (
-            loss_func(),
+            LossFunc(),
             np.nan,
             np.array([(-10, 10), (-10, 10)]),
             None,
@@ -262,7 +261,7 @@ class loss_func_2d:
             "can not be NAN",
         ),
         (
-            loss_func(),
+            LossFunc(),
             1,
             np.array([(-10, 10), (-10, 10)]),
             np.nan,
@@ -275,7 +274,7 @@ class loss_func_2d:
             "'init_states' can not be NAN",
         ),
         (
-            loss_func(),
+            LossFunc(),
             1,
             np.array([(-10, 10), (-10, 10)]),
             np.array([(-10, 10), (-10, 10)]),
@@ -288,7 +287,7 @@ class loss_func_2d:
             "'init_states' must be a 1-D numpy array",
         ),
         (
-            loss_func(),
+            LossFunc(),
             1,
             np.array([(-10, 10), (-10, 10)]),
             [0, 0],
@@ -301,7 +300,7 @@ class loss_func_2d:
             "",
         ),
         (
-            loss_func(),
+            LossFunc(),
             1,
             np.array([(-10, 10), (-10, 10)]),
             (0, 0),
@@ -314,7 +313,7 @@ class loss_func_2d:
             "",
         ),
         (
-            loss_func(),
+            LossFunc(),
             1,
             np.array([(-10, 10), (-10, 10)]),
             np.array([0, 0]),
@@ -394,7 +393,7 @@ def test_fit_1d(init_states, bounds, acceptance):
     attempts = 0
     max_attempts = 5
     while attempts < max_attempts:
-        ann = Annealer(loss=loss_func(), weights_step_size=0.1, init_states=init_states, bounds=bounds, verbose=True)
+        ann = Annealer(loss=LossFunc(), weights_step_size=0.1, init_states=init_states, bounds=bounds, verbose=True)
         w0, lmin, _, _, _, _ = ann.fit(stopping_limit=acceptance)
         print(w0, lmin)
         if (np.isclose(w0, 4.0565, rtol=5e-1, atol=5e-1) and np.isclose(lmin, -24.057, rtol=5e-2, atol=5e-2)) or (
@@ -472,7 +471,7 @@ def test_fit_2d(init_states, bounds, acceptance, schedule, alpha):
     attempts = 0
     max_attempts = 5
     while attempts < max_attempts:
-        ann = Annealer(loss=loss_func_2d(), weights_step_size=0.1, init_states=init_states, bounds=bounds, verbose=True)
+        ann = Annealer(loss=LossFunc2D(), weights_step_size=0.1, init_states=init_states, bounds=bounds, verbose=True)
         w0, lmin, _, _, _, _ = ann.fit(
             stopping_limit=acceptance,
             alpha=alpha,
@@ -513,7 +512,7 @@ def test_fit_2d_multipoint(init_states, bounds, acceptance, multiproc):
         else:
             Annealer.set_cpu_limit(1)
         # noinspection PyTypeChecker
-        ann = Annealer(loss=loss_func_2d(), weights_step_size=0.1, init_states=init_states, bounds=bounds, verbose=True)
+        ann = Annealer(loss=LossFunc2D(), weights_step_size=0.1, init_states=init_states, bounds=bounds, verbose=True)
         results = ann.fit(npoints=3, stopping_limit=acceptance)
         assert len(results) == 3
         success = 0
@@ -562,7 +561,7 @@ def test_fit_2d_multipoint_stop_soon(init_states, bounds, acceptance, multiproc,
         else:
             Annealer.set_cpu_limit(1)
         # noinspection PyTypeChecker
-        ann = Annealer(loss=loss_func_2d(), weights_step_size=0.1, init_states=init_states, bounds=bounds, verbose=True)
+        ann = Annealer(loss=LossFunc2D(), weights_step_size=0.1, init_states=init_states, bounds=bounds, verbose=True)
         w0, lmin, _, _, _, _ = ann.fit(npoints=npoints, stopping_limit=acceptance, stop_at_first_found=True)
         print(w0, lmin)
         if (

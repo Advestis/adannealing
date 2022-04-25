@@ -55,7 +55,7 @@ logger = logging.getLogger(__name__)
     alpha,
     all_prices,
 ) = load_financial_configurations("profiling/run_configs.json")
-limits = tuple(((0.0, 0.25), (-2.5, -2.0)))#, (-2.5, -2.0), (-2.5, -2.0), (-2.5, -2.0)))
+limits = tuple(((0.0, 0.25), (-2.5, -2.0)))  # , (-2.5, -2.0), (-2.5, -2.0), (-2.5, -2.0)))
 # TODO : set variance of weights for exploration related to constraints
 
 
@@ -112,9 +112,9 @@ def run(number_isins, verbose=True):
         iterations=n_iterations,
         verbose=verbose,
         history_path=str(hpath),
-        logger_level='INFO',
+        logger_level="INFO",
         # TODO: test more this experimental feature
-        optimal_step_size=True # experimental
+        optimal_step_size=True,  # experimental
     )
     numerical_solution, val_at_best, _, hist, final_hist, _ = ann.fit(
         alpha=alpha, stopping_limit=0.001, npoints=1, stop_at_first_found=True
@@ -152,7 +152,7 @@ if __name__ == "__main__":
         if args.multiproc:
             errors_norms_times = engine(run, isins, do_plot=False, verbose=False)
         else:
-            errors_norms_times = [run(i, False, False) for i in isins]
+            errors_norms_times = [run(i, False) for i in isins]
         isins, errors, times = zip(*errors_norms_times)
         fig, axes = plt.subplots(2, 1, figsize=(10, 7))
         axes[1].set_xlabel("# Isins", fontsize=15)

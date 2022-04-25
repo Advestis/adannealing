@@ -17,7 +17,6 @@ import logging
 import matplotlib.markers as mmarkers
 from plotly.subplots import make_subplots
 import itertools
-import warnings
 
 import pandas as pd
 
@@ -81,16 +80,11 @@ def make_counter(iterable: Union[int, Collection[Any]]) -> Dict[int, str]:
     dt = int(nitems / 10)
     if nitems < 10:
         dt = 1
-    indexes_to_print = {
-        i: f"{i}/{nitems}, {round(100 * i / nitems, 2)}%"
-        for i in list(range(dt, nitems, dt))
-    }
+    indexes_to_print = {i: f"{i}/{nitems}, {round(100 * i / nitems, 2)}%" for i in list(range(dt, nitems, dt))}
     return indexes_to_print
 
 
-def to_array(
-    value: Union[int, float, list, np.ndarray, pd.Series, pd.DataFrame], name: str
-) -> np.ndarray:
+def to_array(value: Union[int, float, list, np.ndarray, pd.Series, pd.DataFrame], name: str) -> np.ndarray:
     """
     Converts 'value' into a numpy array, does not reshape. Will raise an error if value's type is not one of :
      * int or bool
@@ -121,9 +115,7 @@ def to_array(
         elif isinstance(value, (pd.Series, pd.DataFrame)):
             value = value.values
         else:
-            raise TypeError(
-                f"'{name}' must be castable into a numpy array, got a {type(value)}."
-            )
+            raise TypeError(f"'{name}' must be castable into a numpy array, got a {type(value)}.")
     if any(np.isnan(value.flatten())):
         raise ValueError(f"'{name}' can not contain NANs")
     return value.astype(float)
@@ -234,16 +226,12 @@ class Annealer:
             return []
 
         fit_method = (
-            cls._fit_one_canonical
-            if iterable[0].annealing_type == "canonical"
-            else cls._fit_one_microcanonical
+            cls._fit_one_canonical if iterable[0].annealing_type == "canonical" else cls._fit_one_microcanonical
         )
 
         if not cls.__PARALLEL:
             if not stop_at_first_found:
-                return [
-                    cls._fit_one_canonical(iterable[i]) for i in range(len(iterable))
-                ]
+                return [cls._fit_one_canonical(iterable[i]) for i in range(len(iterable))]
             results = []
             for i in range(len(iterable)):
                 results.append(fit_method(iterable[i], history_path=None))
@@ -261,9 +249,7 @@ class Annealer:
             context = mp.get_context("spawn")
             bads = []
             found = False
-            with ProcessPoolExecutor(
-                max_workers=cls.__CPU_LIMIT, mp_context=context
-            ) as pool:
+            with ProcessPoolExecutor(max_workers=cls.__CPU_LIMIT, mp_context=context) as pool:
 
                 if not stop_at_first_found:
                     return list(pool.map(fit_method, iterable))
@@ -273,9 +259,7 @@ class Annealer:
                 results = [pool.submit(fit_method, it) for it in iterable]
 
                 while True:
-                    returns_index = [
-                        i for i in range(len(results)) if results[i].done()
-                    ]
+                    returns_index = [i for i in range(len(results)) if results[i].done()]
                     returns = [results[i].result() for i in returns_index]
 
                     if len(returns) > 0:
@@ -285,15 +269,9 @@ class Annealer:
                             [run.cancel() for run in results]
                             results = [res for res in goods if res[1] == best_loss][0]
                             if history_path is not None:
-                                bads = [
-                                    j for j in range(len(iterable)) if j not in returns
-                                ]
-                                results[-3].data.to_csv(
-                                    Path(history_path) / "history.csv"
-                                )
-                                results[-2].data.to_csv(
-                                    Path(history_path) / "result.csv"
-                                )
+                                bads = [j for j in range(len(iterable)) if j not in returns]
+                                results[-3].data.to_csv(Path(history_path) / "history.csv")
+                                results[-2].data.to_csv(Path(history_path) / "result.csv")
                             found = True
                             break
                     if len(returns) == len(iterable):
@@ -307,9 +285,7 @@ class Annealer:
 
             results = [res.result() for res in results]
 
-        logger.warning(
-            "No run managed to reach the desired limit. Returning the run with lowest loss."
-        )
+        logger.warning("No run managed to reach the desired limit. Returning the run with lowest loss.")
         best_loss = min([res[1] for res in results])
         results = [res for res in results if res[1] == best_loss][0]
         if history_path is not None:
@@ -386,15 +362,11 @@ class Annealer:
             logger.setLevel(logger_level)
 
         if not isinstance(verbose, bool):
-            raise TypeError(
-                f"'verbose' must be a boolean, got {type(verbose)} instead."
-            )
+            raise TypeError(f"'verbose' must be a boolean, got {type(verbose)} instead.")
         self.verbose = verbose
 
         if annealing_type != "canonical" and annealing_type != "microcanonical":
-            raise ValueError(
-                f"Unknown annealing type '{annealing_type}'. Can be 'canonical' or 'microcanonical'"
-            )
+            raise ValueError(f"Unknown annealing type '{annealing_type}'. Can be 'canonical' or 'microcanonical'")
         self.annealing_type = annealing_type
 
         self.dimensions = None
@@ -404,13 +376,9 @@ class Annealer:
         else:
             self.loss_kwargs = {}
         if not isinstance(loss, Callable):
-            raise TypeError(
-                f"The loss function must be callable, got a {type(loss)} instead"
-            )
+            raise TypeError(f"The loss function must be callable, got a {type(loss)} instead")
         if len(inspect.signature(loss).parameters) != 1 + len(self.loss_kwargs):
-            raise ValueError(
-                f"The loss function must accept exactly {1 + len(self.loss_kwargs)} parameter(s)"
-            )
+            raise ValueError(f"The loss function must accept exactly {1 + len(self.loss_kwargs)} parameter(s)")
         self.loss = loss
 
         if weights_step_size is None:
@@ -432,9 +400,7 @@ class Annealer:
             pass
 
         if bounds is None and init_states is None:
-            raise ValueError(
-                "At least one of 'init_states' and 'bounds' must be specified"
-            )
+            raise ValueError("At least one of 'init_states' and 'bounds' must be specified")
 
         if bounds is not None and init_states is not None:
             logger.warning("Specified bounds and init_states. Bounds are then ignored.")
@@ -443,15 +409,12 @@ class Annealer:
             assert ~(bounds == None).any()
             bounds = to_array(bounds, "bounds")
             if bounds.ndim != 2 or bounds.shape[1] != 2:
-                raise ValueError(
-                    f"'bounds' dimension should be (any, 2), got {bounds.shape}"
-                )
+                raise ValueError(f"'bounds' dimension should be (any, 2), got {bounds.shape}")
             self.dimensions = bounds.shape[0]
             for coordinate in range(self.dimensions):
                 if bounds[coordinate][0] > bounds[coordinate][1]:
                     raise ValueError(
-                        "Bounds are not valid : some lower limits are greater then their upper limits:\n"
-                        f"{bounds}"
+                        "Bounds are not valid : some lower limits are greater then their upper limits:\n" f"{bounds}"
                     )
             self.bounds = bounds
             self.init_states = None  # set later
@@ -460,12 +423,8 @@ class Annealer:
                 init_states = float(init_states)
             if not isinstance(init_states, float):
                 init_states = to_array(init_states, "init_states")
-                if init_states.ndim != 1 and not (
-                    init_states.ndim == 2 and init_states.shape[0] == 1
-                ):
-                    raise ValueError(
-                        "'init_states' must be a 1-D numpy array or a line vector"
-                    )
+                if init_states.ndim != 1 and not (init_states.ndim == 2 and init_states.shape[0] == 1):
+                    raise ValueError("'init_states' must be a 1-D numpy array or a line vector")
             else:
                 if np.isnan(init_states):
                     raise ValueError("'init_states' can not be NAN")
@@ -487,9 +446,7 @@ class Annealer:
         else:
             if np.isnan(weights_step_size):
                 raise ValueError("weights_step_size can not be NAN")
-            weights_step_size = np.array(
-                [weights_step_size for _ in range(self.dimensions)]
-            )
+            weights_step_size = np.array([weights_step_size for _ in range(self.dimensions)])
         self.weights_step_size = weights_step_size
 
         # Experimental
@@ -501,9 +458,7 @@ class Annealer:
             if isinstance(temp_0, int):
                 temp_0 = float(temp_0)
             if not isinstance(temp_0, float):
-                raise TypeError(
-                    f"'temp_0' must be a float, got {type(temp_0)} instead."
-                )
+                raise TypeError(f"'temp_0' must be a float, got {type(temp_0)} instead.")
             if np.isnan(temp_0):
                 raise ValueError("'temp_0' can not be NAN")
         self.temp_0 = temp_0
@@ -512,9 +467,7 @@ class Annealer:
             if isinstance(temp_min, int):
                 temp_min = float(temp_min)
             if not isinstance(temp_min, float):
-                raise TypeError(
-                    f"'temp_min' must be a float, got {type(temp_min)} instead."
-                )
+                raise TypeError(f"'temp_min' must be a float, got {type(temp_min)} instead.")
             if np.isnan(temp_min):
                 raise ValueError("'temp_min' can ont be NAN")
         self.temp_min = temp_min
@@ -531,33 +484,20 @@ class Annealer:
         self.alpha = alpha
 
         if not isinstance(iterations, int) or iterations <= 0:
-            raise ValueError(
-                f"Number of iterations must be an integer greater than 0, got {iterations}"
-            )
+            raise ValueError(f"Number of iterations must be an integer greater than 0, got {iterations}")
         self.iterations = iterations
 
-        if stopping_limit is not None and (
-            not isinstance(stopping_limit, float) or not 0 < stopping_limit < 1
-        ):
-            raise ValueError(
-                f"Stopping limit must be a float between 0 and 1, got {stopping_limit}"
-            )
+        if stopping_limit is not None and (not isinstance(stopping_limit, float) or not 0 < stopping_limit < 1):
+            raise ValueError(f"Stopping limit must be a float between 0 and 1, got {stopping_limit}")
         self.stopping_limit = stopping_limit
 
         if self.iterations < 5000 and self.stopping_limit is not None:
-            logger.warning(
-                "Iteration should not be less than 5000. Using 5000 instead."
-            )
+            logger.warning("Iteration should not be less than 5000. Using 5000 instead.")
             self.iterations = 5000
 
         if cooling_schedule is not None and not isinstance(cooling_schedule, str):
-            raise ValueError(
-                f"cooling_schedule must be a str, got {type(cooling_schedule)}"
-            )
-        if (
-            cooling_schedule is not None
-            and cooling_schedule not in Annealer.__POSSIBLE_SCHEDULES
-        ):
+            raise ValueError(f"cooling_schedule must be a str, got {type(cooling_schedule)}")
+        if cooling_schedule is not None and cooling_schedule not in Annealer.__POSSIBLE_SCHEDULES:
             raise NotADirectoryError(f"Unknown cooling schedule '{cooling_schedule}'")
         self.cooling_schedule = cooling_schedule
 
@@ -580,9 +520,7 @@ class Annealer:
         if self.verbose:
             logger.debug(msg)
 
-    def _get_temp_max(
-        self, ar_limit_low=0.79, ar_limit_up=0.81, max_attempts=100, t1_i=1e-5, t2=10.0
-    ) -> float:
+    def _get_temp_max(self, ar_limit_low=0.79, ar_limit_up=0.81, max_attempts=100, t1_i=1e-5, t2=10.0) -> float:
         """From self.loss, finds the starting temperature.
 
         Will try to find a temperature T giving a final acceptance ratio AR between 'ar_limit_low'% and 'ar_limit_up'%,
@@ -615,18 +553,14 @@ class Annealer:
         self._info(f"Looking for starting temperature...")
 
         if ar_limit_up < ar_limit_low:
-            raise ValueError(
-                "Acceptance ratio limit up must be greater than Acceptance ratio limit low"
-            )
+            raise ValueError("Acceptance ratio limit up must be greater than Acceptance ratio limit low")
         if not isinstance(max_attempts, int):
             raise TypeError("'max_attempts' must be an integer")
         if max_attempts <= 0:
             raise ValueError("'max_attempts' must be greater than 0")
 
         if ar_limit_up >= 0.95:
-            raise ValueError(
-                "Acceptance ratio limit up can not be equal to or greater than 0.95"
-            )
+            raise ValueError("Acceptance ratio limit up can not be equal to or greater than 0.95")
 
         acc_ratio = 0
         attempts = 0
@@ -709,9 +643,7 @@ class Annealer:
                     t2 = 2e-16
                 attempts += 1
 
-        self._info(
-            f"Found starting temperature t0 = {round(t2, 3)} (acc. ratio = {round(acc_ratio_2, 3)})"
-        )
+        self._info(f"Found starting temperature t0 = {round(t2, 3)} (acc. ratio = {round(acc_ratio_2, 3)})")
         return t2
 
     def fit(
@@ -729,7 +661,7 @@ class Annealer:
         annealing_type: Optional[str] = None,
         verbose: bool = True,
         loss_kwargs: Optional[dict] = None,
-        searching_t: bool = False
+        searching_t: bool = False,
     ) -> Union[
         List[Tuple[np.ndarray, float, float, Sampler, Sampler, bool]],
         Tuple[np.ndarray, float, float, Sampler, Sampler, bool],
@@ -747,9 +679,7 @@ class Annealer:
         if annealing_type is None:
             annealing_type = self.annealing_type
         if annealing_type != "canonical" and annealing_type != "microcanonical":
-            raise ValueError(
-                f"Unknown annealing type '{annealing_type}'. Can be 'canonical' or 'microcanonical'"
-            )
+            raise ValueError(f"Unknown annealing type '{annealing_type}'. Can be 'canonical' or 'microcanonical'")
 
         if alpha is None:
             alpha = self.alpha
@@ -783,12 +713,8 @@ class Annealer:
                 init_states = float(init_states)
             if not isinstance(init_states, float):
                 init_states = to_array(init_states, "init_states")
-                if init_states.ndim != 1 and not (
-                    init_states.ndim == 2 and init_states.shape[0] == 1
-                ):
-                    raise ValueError(
-                        "'init_states' must be a 1-D numpy array or a line vector"
-                    )
+                if init_states.ndim != 1 and not (init_states.ndim == 2 and init_states.shape[0] == 1):
+                    raise ValueError("'init_states' must be a 1-D numpy array or a line vector")
             else:
                 if np.isnan(init_states):
                     raise ValueError("'init_states' can not be NAN")
@@ -813,9 +739,7 @@ class Annealer:
                     cooling_schedule,
                 )
             else:
-                results = self._fit_one_micronanonical(
-                    iterations, stopping_limit, history_path, init_states
-                )
+                results = self._fit_one_micronanonical(iterations, stopping_limit, history_path, init_states)
 
         else:
             if self.bounds is None:
@@ -825,19 +749,13 @@ class Annealer:
             if history_path is not None:
                 history_path = Path(history_path)
             if init_states is None:
-                init_states = generate_init_states(
-                    self.bounds, npoints, self.weights_step_size
-                )
+                init_states = generate_init_states(self.bounds, npoints, self.weights_step_size)
             elif len(init_states) != npoints:
                 raise ValueError(
                     f"Asked to find {npoints} local minima, but specified only {len(init_states)} initial states."
                 )
             if history_path is not None:
-                [
-                    (history_path / str(i)).mkdir()
-                    for i in range(npoints)
-                    if not (history_path / str(i)).is_dir()
-                ]
+                [(history_path / str(i)).mkdir() for i in range(npoints) if not (history_path / str(i)).is_dir()]
             if not searching_t:
                 self.loss.on_fit_start(tuple(init_states))
             annealers = [
@@ -854,9 +772,7 @@ class Annealer:
                     stopping_limit=stopping_limit,
                     cooling_schedule=cooling_schedule,
                     annealing_type=annealing_type,
-                    history_path=str(history_path / str(i))
-                    if history_path is not None
-                    else None,
+                    history_path=str(history_path / str(i)) if history_path is not None else None,
                     loss_kwargs=loss_kwargs,
                 )
                 for i in range(npoints)
@@ -883,31 +799,21 @@ class Annealer:
     ) -> float:
         if method == "logarithmic":
             if alpha <= 0:
-                ValueError(
-                    "If using logarithmic cooling schedule, alpha must be a positive number"
-                )
+                ValueError("If using logarithmic cooling schedule, alpha must be a positive number")
             if t is None:
-                raise ValueError(
-                    "Is using logarithmic cooling schedule, t must be specified"
-                )
+                raise ValueError("Is using logarithmic cooling schedule, t must be specified")
             return self._logarithmic_cooling(t, alpha)
         elif method == "geometric":
             if not 0 <= alpha <= 1:
-                ValueError(
-                    "If using geometric cooling schedule, alpha must be a positive number lower than 1"
-                )
+                ValueError("If using geometric cooling schedule, alpha must be a positive number lower than 1")
             return self._geometric_cooling(temp, alpha)
         elif method == "linear":
             if alpha <= 0:
-                ValueError(
-                    "If using linear cooling schedule, alpha must be a positive number"
-                )
+                ValueError("If using linear cooling schedule, alpha must be a positive number")
             return self._linear_cooling(temp, alpha)
         elif method == "arithmetic-geometric":
             if temp_min is None:
-                raise ValueError(
-                    "Is using arithmetic-geometric cooling schedule, temp_min must be specified"
-                )
+                raise ValueError("Is using arithmetic-geometric cooling schedule, temp_min must be specified")
             if not 0 <= alpha <= 1:
                 ValueError(
                     "If using arithmetic-geometric cooling schedule, alpha must be a positive number lower than 1"
@@ -938,17 +844,13 @@ class Annealer:
         assert np.isclose(np.linalg.norm(unit_v), 1.0)
         cov = np.zeros((curr.shape[0], curr.shape[0]), float)
         np.fill_diagonal(cov, self.weights_step_size)
-        candidate = np.random.multivariate_normal(mean=curr.ravel(), cov=cov).reshape(
-            curr.shape
-        )
+        candidate = np.random.multivariate_normal(mean=curr.ravel(), cov=cov).reshape(curr.shape)
 
         candidate_loss = self.loss(candidate.T, **loss_kwargs)
         if hasattr(candidate_loss, "__len__") and len(candidate_loss) == 1:
             candidate_loss = candidate_loss[0]
         if not isinstance(candidate_loss, (int, float)):
-            raise ValueError(
-                f"Return of loss function should be a number, got {type(candidate_loss)}"
-            )
+            raise ValueError(f"Return of loss function should be a number, got {type(candidate_loss)}")
         return candidate, candidate_loss
 
     def _fit_one_micronanonical(
@@ -978,8 +880,7 @@ class Annealer:
 
         if iterations < 5000 and stopping_limit is not None:
             logger.warning(
-                "Outer loop iterations should not be less than 5000 if using a stopping limit."
-                " Using 5000 instead."
+                "Outer loop iterations should not be less than 5000 if using a stopping limit." " Using 5000 instead."
             )
             iterations = 5000
 
@@ -987,18 +888,14 @@ class Annealer:
             raise ValueError("'limit' should be between 0 and 1")
 
         if iterations is None or not isinstance(iterations, int) or iterations <= 0:
-            raise ValueError(
-                "Number of outer iterations must be an integer greater than 0"
-            )
+            raise ValueError("Number of outer iterations must be an integer greater than 0")
 
         curr = init_states.copy()
         curr_loss = self.loss(curr.T, **loss_kwargs)
         while hasattr(curr_loss, "__len__") and len(curr_loss) == 1:
             curr_loss = curr_loss[0]
         if not isinstance(curr_loss, (int, float)):
-            raise ValueError(
-                f"Return of loss function should be a number, got {type(curr_loss)}"
-            )
+            raise ValueError(f"Return of loss function should be a number, got {type(curr_loss)}")
 
         history = Sampler()
 
@@ -1060,16 +957,10 @@ class Annealer:
                     finishing_history.append(sample)
                     n_finishing += 1
                     if n_finishing > n_finishing_max:
-                        self._info(
-                            f"Variation of loss is small enough after step {i_}, stopping"
-                        )
-                        curr, curr_loss, acc_ratio, last_index = finish(
-                            finishing_history
-                        )
+                        self._info(f"Variation of loss is small enough after step {i_}, stopping")
+                        curr, curr_loss, acc_ratio, last_index = finish(finishing_history)
                         # noinspection PyProtectedMember
-                        finishing_history = Sampler(
-                            finishing_history._data.iloc[[last_index]]
-                        )
+                        finishing_history = Sampler(finishing_history._data.iloc[[last_index]])
                         curr = curr.reshape(1, curr.shape[0])
                         finished = True
                         break
@@ -1187,9 +1078,7 @@ class Annealer:
             loss_kwargs = self.loss_kwargs
 
         if iterations < 5000 and stopping_limit is not None:
-            logger.warning(
-                "Iteration should not be less than 5000 if using a stopping limit. Using 5000 instead."
-            )
+            logger.warning("Iteration should not be less than 5000 if using a stopping limit. Using 5000 instead.")
             iterations = 5000
 
         if stopping_limit is not None and not 0 < stopping_limit < 1:
@@ -1198,9 +1087,7 @@ class Annealer:
         if temp_min is None or temp_min < 0:
             raise ValueError("'tmin' must be a float greater than or equal to 0")
         if temp_0 is None or temp_0 <= temp_min:
-            raise ValueError(
-                f"'t0' must be a float greater than tmin, got {temp_0} <= {temp_min}"
-            )
+            raise ValueError(f"'t0' must be a float greater than tmin, got {temp_0} <= {temp_min}")
         if iterations is None or not isinstance(iterations, int) or iterations <= 0:
             raise ValueError("Number of iterations must be an integer greater than 0")
 
@@ -1214,9 +1101,7 @@ class Annealer:
         while hasattr(curr_loss, "__len__") and len(curr_loss) == 1:
             curr_loss = curr_loss[0]
         if not isinstance(curr_loss, (int, float)):
-            raise ValueError(
-                f"Return of loss function should be a number, got {type(curr_loss)}"
-            )
+            raise ValueError(f"Return of loss function should be a number, got {type(curr_loss)}")
 
         history = Sampler()
 
@@ -1264,9 +1149,7 @@ class Annealer:
             )
             history.append(sample)
 
-            temp = self._get_next_temperature(
-                temp, alpha, cooling_schedule, temp_min, i_ + 1
-            )
+            temp = self._get_next_temperature(temp, alpha, cooling_schedule, temp_min, i_ + 1)
 
             if i_ in to_print and to_print[i_] is not None:
                 self._info(
@@ -1288,16 +1171,10 @@ class Annealer:
                     finishing_history.append(sample)
                     n_finishing += 1
                     if n_finishing > n_finishing_max:
-                        self._info(
-                            f"Variation of loss is small enough after step {i_}, stopping"
-                        )
-                        curr, curr_loss, acc_ratio, last_index = finish(
-                            finishing_history
-                        )
+                        self._info(f"Variation of loss is small enough after step {i_}, stopping")
+                        curr, curr_loss, acc_ratio, last_index = finish(finishing_history)
                         # noinspection PyProtectedMember
-                        finishing_history = Sampler(
-                            finishing_history._data.iloc[[last_index]]
-                        )
+                        finishing_history = Sampler(finishing_history._data.iloc[[last_index]])
                         finished = True
                         break
                 else:
@@ -1329,12 +1206,12 @@ class Annealer:
     ) -> Union[Tuple[plt.Figure, list], None]:
         """From a directory containing 'result.csv' and 'history.csv', produces plots.
         Will produce the file "annealing.pdf" in 'sampler_path' and return the corresponding Figure object.
-        If subfolders themselves containing 'result.csv' and 'history.csv' are present, will plot will call itself on them
-        too.
+        If subfolders themselves containing 'result.csv' and 'history.csv' are present, will plot will call itself on
+        them too.
         In the plot, will show the first 'nweights'.
 
-        'sampler_path' can also be a tuple of two Sampler objects, the first should then be the full history of the fit and
-        the second the point of the local minimum.
+        'sampler_path' can also be a tuple of two Sampler objects, the first should then be the full history of the fit
+         and the second the point of the local minimum.
 
         Parameters
         ----------
@@ -1348,12 +1225,15 @@ class Annealer:
                 Number of weights to display in plots (default value = 10)
             weights_names: Optional[list]
                 List of names of weights, for axis labels. If None, weights are named using their position index.
+            do_3d: bool
+                Either do or not do 3-dim plot of the annealer evolution
+
 
         Returns
         -------
-        Union[Tuple[plt.Figure, list], None]
-            Returns None if the given directory does not contain history.csv or result.csv. Otherwise returns the created
-            figure and the weights and loss of the local minimum.
+        Union[Tuple[plt.Figure, go.Figure, list], None]
+            Returns None if the given directory does not contain history.csv or result.csv. Otherwise returns the
+             created figure and the weights and loss of the local minimum.
         """
 
         points = []
@@ -1472,12 +1352,8 @@ class Annealer:
             norm=LogNorm(),
             s=7,
         )
-        third_ax.plot(
-            [iterations[0], iterations[-1]], [final_loss[-1], final_loss[-1]], c="black"
-        )
-        third_ax.text(
-            iterations[0], final_loss[-1], s=f"{round(final_loss[-1], 3)}", c="black"
-        )
+        third_ax.plot([iterations[0], iterations[-1]], [final_loss[-1], final_loss[-1]], c="black")
+        third_ax.text(iterations[0], final_loss[-1], s=f"{round(final_loss[-1], 3)}", c="black")
         fig.subplots_adjust(right=0.8)
 
         add_colorbar(fig, im, first_ax, axisfontsize)
@@ -1490,13 +1366,9 @@ class Annealer:
             ax1.grid(True, ls="--", lw=0.2, alpha=0.5)
             ax2.grid(True, ls="--", lw=0.2, alpha=0.5)
             ax1.set_xlabel("Iterations")
-            ax1.set_ylabel(
-                f"Weights {iplot if weights_names is None else weights_names[iplot]}"
-            )
+            ax1.set_ylabel(f"Weights {iplot if weights_names is None else weights_names[iplot]}")
             ax2.set_ylabel("Loss")
-            ax2.set_xlabel(
-                f"Weight {iplot if weights_names is None else weights_names[iplot]}"
-            )
+            ax2.set_xlabel(f"Weight {iplot if weights_names is None else weights_names[iplot]}")
 
             mscatter(
                 iterations,
@@ -1542,12 +1414,11 @@ class Annealer:
         if do_3d:
 
             i_couples = list(itertools.combinations(range(nweights), 2))
-            names_couples = list(itertools.combinations(weights_names, 2))
 
-            def objective_2d(i, j, wi, wj):
+            def objective_2d(i_, j_, wi, wj):
                 ann_solution = self.results[0].reshape(-1, 1).copy()
-                ann_solution[i] = wi
-                ann_solution[j] = wj
+                ann_solution[i_] = wi
+                ann_solution[j_] = wj
                 return self.loss(ann_solution)
 
             # TODO : it should work, but it does not. Understand why
@@ -1591,9 +1462,7 @@ class Annealer:
 
                 z_explored = np.zeros_like(temps)
                 for k in range(len(temps)):
-                    z_explored[k] = objective_2d(
-                        col, row, explored_w_x[k], explored_w_y[k]
-                    )
+                    z_explored[k] = objective_2d(col, row, explored_w_x[k], explored_w_y[k])
 
                 fig_3d.add_scatter3d(
                     # for some reason, need to transpose
@@ -1604,9 +1473,7 @@ class Annealer:
                     marker=dict(
                         size=1.2,
                         color=temps,
-                        symbol=list(
-                            map(lambda val: "x" if val else "circle", accepted)
-                        ),
+                        symbol=list(map(lambda val: "x" if val else "circle", accepted)),
                         showscale=True,
                     ),
                     row=1,
@@ -1637,13 +1504,10 @@ class Annealer:
                 )
 
                 fig_3d.write_html(
-                    str(
-                        sampler_path
-                        / f"3d_visualisation_{weights_names[col]}_{weights_names[row]}.html"
-                    )
+                    str(sampler_path / f"3d_visualisation_{weights_names[col]}_{weights_names[row]}.html")
                 )
 
-        return fig, fig_3d, [final_weights, final_loss]
+        return fig, [final_weights, final_loss]
 
 
 def finish(sampler: Sampler) -> Tuple[np.ndarray, float, float, int]:
@@ -1687,11 +1551,7 @@ def generate_init_states(
     if npoints <= 0:
         raise ValueError("npoints must be greater than 0.")
     if npoints == 1:
-        return (
-            bounds[:, 0]
-            + step_size
-            + np.random.uniform(size=(1, len(bounds))) * (bounds[:, 1] - bounds[:, 0])
-        )
+        return bounds[:, 0] + step_size + np.random.uniform(size=(1, len(bounds))) * (bounds[:, 1] - bounds[:, 0])
     if npoints == 2:
         return bounds[:, 0] + step_size, bounds[:, 1] - step_size
     dim = bounds.shape[0]
@@ -1700,8 +1560,7 @@ def generate_init_states(
     l1 = np.concatenate((zeros, ones))
     l2 = np.concatenate((ones, zeros))
     init_states_indexes = np.array(
-        list(distinct_combinations(l1, dim))
-        + list(distinct_combinations(l2, dim))[1:-1],
+        list(distinct_combinations(l1, dim)) + list(distinct_combinations(l2, dim))[1:-1],
         dtype=np.uint8,
     )
     if npoints < init_states_indexes.shape[0]:
@@ -1724,10 +1583,7 @@ def generate_init_states(
     if npoints > init_states_indexes.shape[0]:
         for _ in range(npoints - len(init_states)):
             init_states.append(
-                bounds[:, 0]
-                + step_size
-                + np.random.uniform(size=(1, len(bounds)))
-                * (bounds[:, 1] - bounds[:, 0])
+                bounds[:, 0] + step_size + np.random.uniform(size=(1, len(bounds))) * (bounds[:, 1] - bounds[:, 0])
             )
     return np.array(init_states)
 
