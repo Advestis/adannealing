@@ -644,7 +644,7 @@ class Annealer:
             stopping_limit=None,
         )
         _, _, acc_ratio_1, _, _, _ = ann.fit(
-            temp_0=t1, iterations=1000, stopping_limit=None, verbose=False
+            temp_0=t1, iterations=1000, stopping_limit=None, verbose=False, searching_t=True
         )
 
         if ar_limit_low < acc_ratio_1 < ar_limit_up:
@@ -661,7 +661,7 @@ class Annealer:
                     )
                 t1 = t1 / 10
                 _, _, acc_ratio_1, _, _, _ = ann.fit(
-                    temp_0=t1, iterations=1000, stopping_limit=None, verbose=False
+                    temp_0=t1, iterations=1000, stopping_limit=None, verbose=False, searching_t=True
                 )
                 attempts += 1
 
@@ -673,7 +673,7 @@ class Annealer:
                         f"and {ar_limit_up} in less than {max_attempts} attempts"
                     )
                 _, _, acc_ratio_2, _, _, _ = ann.fit(
-                    temp_0=t2, iterations=1000, stopping_limit=None, verbose=False
+                    temp_0=t2, iterations=1000, stopping_limit=None, verbose=False, searching_t=True
                 )
                 self._info(f"---------------------------------------------")
                 self._info(f"Attempt {attempts}")
@@ -728,6 +728,7 @@ class Annealer:
         annealing_type: Optional[str] = None,
         verbose: bool = True,
         loss_kwargs: Optional[dict] = None,
+        searching_t: bool = False
     ) -> Union[
         List[Tuple[np.ndarray, float, float, Sampler, Sampler, bool]],
         Tuple[np.ndarray, float, float, Sampler, Sampler, bool],
@@ -796,7 +797,9 @@ class Annealer:
 
         if npoints == 1:
             initialisation = self.init_states if init_states is None else init_states
-            self.loss.on_fit_start(initialisation)
+            initialisation = initialisation.T
+            if not searching_t:
+                self.loss.on_fit_start(initialisation)
             if annealing_type == "canonical":
                 results = self._fit_one_canonical(
                     alpha,
@@ -834,7 +837,8 @@ class Annealer:
                     for i in range(npoints)
                     if not (history_path / str(i)).is_dir()
                 ]
-            self.loss.on_fit_start(init_states)
+            if not searching_t:
+                self.loss.on_fit_start(init_states)
             annealers = [
                 Annealer(
                     loss=self.loss,
@@ -864,7 +868,8 @@ class Annealer:
             )
 
         self.results = results
-        self.loss.on_fit_end(results[0])
+        if not searching_t:
+            self.loss.on_fit_end(results[0])
         return results
 
     def _get_next_temperature(
@@ -930,7 +935,7 @@ class Annealer:
         unit_v = np.random.uniform(size=(1, self.dimensions))
         unit_v = unit_v / np.linalg.norm(unit_v)
         assert np.isclose(np.linalg.norm(unit_v), 1.0)
-        cov = np.zeros((curr.shape[1], curr.shape[1]), float)
+        cov = np.zeros((curr.shape[0], curr.shape[0]), float)
         np.fill_diagonal(cov, self.weights_step_size)
         candidate = np.random.multivariate_normal(mean=curr.ravel(), cov=cov).reshape(
             curr.shape
@@ -1202,7 +1207,7 @@ class Annealer:
         self._info(f"Starting temp : {round(temp_0, 3)}")
         temp = temp_0
         curr = init_states.copy()
-        curr_loss = self.loss(curr.T, **loss_kwargs)
+        curr_loss = self.loss(curr, **loss_kwargs)
         while hasattr(curr_loss, "__len__") and len(curr_loss) == 1:
             curr_loss = curr_loss[0]
         if not isinstance(curr_loss, (int, float)):
@@ -1246,7 +1251,7 @@ class Annealer:
 
             acc_ratio = float(points_accepted) / float(i_ + 1)
             sample = SamplePoint(
-                weights=candidate[0],
+                weights=candidate,
                 iteration=i_,
                 accepted=accepted,
                 loss=candidate_loss,
@@ -1289,7 +1294,6 @@ class Annealer:
                         finishing_history = Sampler(
                             finishing_history._data.iloc[[last_index]]
                         )
-                        curr = curr.reshape(1, curr.shape[0])
                         finished = True
                         break
                 else:
@@ -1308,7 +1312,7 @@ class Annealer:
             history.data.to_csv(Path(history_path) / "history.csv")
             finishing_history.data.to_csv(Path(history_path) / "result.csv")
 
-        return curr[0], curr_loss, acc_ratio, history, finishing_history, finished
+        return curr, curr_loss, acc_ratio, history, finishing_history, finished
 
     def plot(
         self,
@@ -1608,15 +1612,14 @@ class Annealer:
                 # TODO : add title to colorbar
                 fig_3d.add_scatter3d(
                     # for some reason, need to transpose
-                    x=[self.results[0][col]],
-                    y=[self.results[0][row]],
+                    x=[self.results[0][col][0]],
+                    y=[self.results[0][row][0]],
                     z=[self.results[1]],
                     mode="markers",
                     marker=dict(
                         size=3,
                         color="red",
                         symbol="circle",
-                        showscale=False,
                     ),
                     row=1,
                     col=1,

@@ -62,9 +62,7 @@ class LossPortfolioMeanVar:
                     self.penalty = lambda w: np.sum(
                         [
                             continuous_constraint(w[i], point_low, point_high)
-                            for i, (point_low, point_high) in enumerate(
-                                self.constraints
-                            )
+                            for i, (point_low, point_high) in enumerate(self.constraints)
                             if i in not_none
                         ]
                     )
@@ -72,9 +70,7 @@ class LossPortfolioMeanVar:
                     self.penalty = lambda w: np.sum(
                         [
                             non_continuous_constraint(w[i], point_low, point_high)
-                            for i, (point_low, point_high) in enumerate(
-                                self.constraints
-                            )
+                            for i, (point_low, point_high) in enumerate(self.constraints)
                             if i in not_none
                         ]
                     )
@@ -86,9 +82,10 @@ class LossPortfolioMeanVar:
             self.penalty = lambda w: 0.0
 
     def on_fit_end(self, best_fit):
-        
+
         self.final_call = True
         self.final_loss_status = self.__call__(best_fit)
+        self.final_call = False
 
         if isinstance(self.init_loss_status, list):
             logger.info("Code has run with several annealers. List of different intialian points:")
@@ -101,23 +98,18 @@ class LossPortfolioMeanVar:
             logger.info(self.init_loss_status)
 
         else:
-            raise RuntimeError('Unknown initial status loss.')
+            raise RuntimeError("Unknown initial status loss.")
 
         logger.info("Final loss components:")
         logger.info(self.final_loss_status)
-
 
         if self.lambda_norm > 0:
             try:
                 assert np.isclose(np.sum(best_fit), self.sum_w_target, rtol=1e-2)
             except AssertionError:
-                logger.info(
-                    "The solution DOES NOT respect the constraint on the sum of the components."
-                )
+                logger.info("The solution DOES NOT respect the constraint on the sum of the components.")
             else:
-                logger.info(
-                    "The solution DOES respect the constraint on the sum of the components."
-                )
+                logger.info("The solution DOES respect the constraint on the sum of the components.")
 
         if self.constraints is not None:
             try:
@@ -133,19 +125,14 @@ class LossPortfolioMeanVar:
                 logger.info("The solution DOES respect the constraints.")
 
         if self.lambda_sparse:
-            sparse_term = (
-                np.linalg.norm(best_fit) ** 2
-                - np.linalg.norm(best_fit, ord=1) ** 2 * self.sparsity_target
-            )
+            sparse_term = np.linalg.norm(best_fit) ** 2 - np.linalg.norm(best_fit, ord=1) ** 2 * self.sparsity_target
             try:
                 assert np.isclose(sparse_term, 0.0, atol=1e-3)
             except AssertionError:
-                logger.info(
-                    "The solution DOES NOT meet the requested level of sparsity."
-                )
+                logger.info("The solution DOES NOT meet the requested level of sparsity.")
             else:
                 logger.info("The solution DOES meet the requested level of sparsity.")
-                
+
     def on_fit_start(self, initial_point):
 
         if isinstance(initial_point, np.ndarray):
@@ -156,10 +143,10 @@ class LossPortfolioMeanVar:
             self.init_loss_status = []
             for init in initial_point:
                 self.first_call = True
-                self.init_loss_status.append(self.__call__(init))
+                self.init_loss_status.append(self.__call__(init.reshape(-1, 1)))
 
         else:
-            raise RuntimeError('Unknown itialisation type')
+            raise RuntimeError("Unknown itialisation type")
 
         self.first_call = False
 
@@ -173,9 +160,9 @@ class LossPortfolioMeanVar:
             except AssertionError:
                 raise RuntimeError('Input shape is wrong even if transposed.')
 
-        return_term = self.r_np.T.dot(wt_np)
-        risk_term = 0.5 * wt_np.T.dot(self.cov_risk.dot(wt_np))
-        fees_term = np.abs(wt_np - self.wt_1_np).T.dot(self.fees)
+        return_term = self.r_np.T.dot(wt_np)[0][0]
+        risk_term = 0.5 * wt_np.T.dot(self.cov_risk.dot(wt_np))[0][0]
+        fees_term = np.abs(wt_np - self.wt_1_np).T.dot(self.fees)[0][0]
         sparse_term = (
             np.linalg.norm(wt_np) ** 2
             - np.linalg.norm(wt_np, ord=1) ** 2 * self.sparsity_target
@@ -197,11 +184,18 @@ class LossPortfolioMeanVar:
         logger.debug(f" [LOSS] norm term : {norm}")
 
         if self.first_call or self.final_call:
-            return return_term, risk_term, fees_term, sparse_term, penalty, norm
+            return {
+                "return_term": return_term,
+                "risk_term": risk_term,
+                "fees_term": fees_term,
+                "sparse_term": sparse_term,
+                "penalty": penalty,
+                "norm": norm,
+            }
 
         else:
             loss = return_term + risk_term + fees_term + sparse_term + penalty + norm
-            return loss[0][0]
+            return loss
 
 
 def load_financial_configurations(path):
