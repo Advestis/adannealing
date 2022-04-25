@@ -17,6 +17,7 @@ import logging
 import matplotlib.markers as mmarkers
 from plotly.subplots import make_subplots
 import itertools
+import warnings
 
 import pandas as pd
 
@@ -1230,6 +1231,7 @@ class Annealer:
         finishing = False
         finished = False
         prev_loss = None
+
         for i_ in range(iterations):
             candidate, candidate_loss = self._take_step(curr, loss_kwargs)
 

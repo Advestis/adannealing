@@ -91,7 +91,7 @@ class LossPortfolioMeanVar:
             logger.info("Code has run with several annealers. List of different intialian points:")
             for i, initial_status in enumerate(self.init_loss_status):
                 logger.info(f"Initial Status Annealer {i}")
-                logger.info(initial_status['status'])
+                logger.info(initial_status["status"])
 
         elif isinstance(self.init_loss_status, dict):
             logger.info("Initial Status components:")
@@ -158,15 +158,12 @@ class LossPortfolioMeanVar:
                 wt_np = wt_np.T
                 assert wt_np.shape == self.common_shape
             except AssertionError:
-                raise RuntimeError('Input shape is wrong even if transposed.')
+                raise RuntimeError("Input shape is wrong even if transposed.")
 
         return_term = self.r_np.T.dot(wt_np)[0][0]
         risk_term = 0.5 * wt_np.T.dot(self.cov_risk.dot(wt_np))[0][0]
         fees_term = np.abs(wt_np - self.wt_1_np).T.dot(self.fees)[0][0]
-        sparse_term = (
-            np.linalg.norm(wt_np) ** 2
-            - np.linalg.norm(wt_np, ord=1) ** 2 * self.sparsity_target
-        )
+        sparse_term = np.linalg.norm(wt_np) ** 2 - np.linalg.norm(wt_np, ord=1) ** 2 * self.sparsity_target
         penalty = self.penalty(wt_np)
         norm = np.abs(np.linalg.norm(wt_np, ord=1) - self.sum_w_target)
 
