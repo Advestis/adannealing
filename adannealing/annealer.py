@@ -267,7 +267,7 @@ class Annealer:
 
         Parameters
         ----------
-        iterable: Callable[Annealer]
+        iterable: Collection[Annealer]
         stop_at_first_found: bool
         history_path: Union[None, str, Path]
 
