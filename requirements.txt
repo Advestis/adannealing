@@ -1,6 +1,0 @@
-plotly
-numpy
-pandas
-pathlib
-more_itertools
-matplotlib
