@@ -353,6 +353,10 @@ class Annealer:
             If specified, fit will be stored here. Must be an existing directory.
         loss_kwargs: dict
             Additionnal kwargs for loss function
+        logger_level: str
+            Logger level
+        optimal_step_size: bool
+            If True, weights_step_size is overwritten considering the typical scale fixed by the bounds of the annealer
 
         The number of iterations will be equal to int((temp_0 - temp_min) / temp_step_size).
         If temp_step_size is not specified, then the number of iterations is equal to 200. (0.5% at each step).
@@ -681,7 +685,7 @@ class Annealer:
         if annealing_type != "canonical" and annealing_type != "microcanonical":
             raise ValueError(f"Unknown annealing type '{annealing_type}'. Can be 'canonical' or 'microcanonical'")
 
-        if annealing_type == 'microcanonical':
+        if annealing_type == "microcanonical":
             raise NotImplementedError
 
         if alpha is None:
