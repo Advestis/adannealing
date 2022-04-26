@@ -45,6 +45,10 @@ class LossFunc2D:
         self.constraints = None
 
     def __call__(self, w) -> float:
+        """
+        A __call__ method must be present. It will be called to evaluate the loss. The argument passed is the 
+        parameter value at which the loss has to be computed.
+        """
         x = w[0]
         y = w[1]
         return (x - 5) * (x - 2) * (x - 1) * x + 10 * y ** 2
@@ -52,14 +56,14 @@ class LossFunc2D:
     def on_fit_start(self, val):
         """
         This method is called by the fitter before optimisation. The argument passed is either the starting point of the
-        optimiser (for single annealer) or the tuple containing different starting points if more than one annealer is used/
+        optimiser (for single annealer) or the tuple containing different starting points if more than one annealer is used
         """
         pass
 
     def on_fit_end(self, val):
         """
         This method is called by the fitter after optimisation. The argument passed is either the result of the 
-        optimiser (for single annealer) or the list of results if more than one annealer reached the end of fit.
+        optimiser (for single annealer) or the list of results if more than one annealer reache the end of fit.
         """
         pass
 
@@ -89,6 +93,10 @@ class LossFunc2D:
         self.constraints = None
 
     def __call__(self, w) -> float:
+        """
+        A __call__ method must be present. It will be called to evaluate the loss. The argument passed is the 
+        parameter value at which the loss has to be computed.
+        """
         x = w[0]
         y = w[1]
         return (x - 5) * (x - 2) * (x - 1) * x + 10 * y ** 2
@@ -96,14 +104,14 @@ class LossFunc2D:
     def on_fit_start(self, val):
         """
         This method is called by the fitter before optimisation. The argument passed is either the starting point of the
-        optimiser (for single annealer) or the tuple containing different starting points if more than one annealer is used/
+        optimiser (for single annealer) or the tuple containing different starting points if more than one annealer is used
         """
         pass
 
     def on_fit_end(self, val):
         """
         This method is called by the fitter after optimisation. The argument passed is either the result of the 
-        optimiser (for single annealer) or the list of results if more than one annealer reached the end of fit.
+        optimiser (for single annealer) or the list of results if more than one annealer reache the end of fit.
         """
         pass
 
@@ -134,7 +142,15 @@ class LossFunc2D:
     def __init__(self):
         self.constraints = None
 
+class LossFunc2D:
+    def __init__(self):
+        self.constraints = None
+
     def __call__(self, w) -> float:
+        """
+        A __call__ method must be present. It will be called to evaluate the loss. The argument passed is the 
+        parameter value at which the loss has to be computed.
+        """
         x = w[0]
         y = w[1]
         return (x - 5) * (x - 2) * (x - 1) * x + 10 * y ** 2
@@ -142,17 +158,16 @@ class LossFunc2D:
     def on_fit_start(self, val):
         """
         This method is called by the fitter before optimisation. The argument passed is either the starting point of the
-        optimiser (for single annealer) or the tuple containing different starting points if more than one annealer is used/
+        optimiser (for single annealer) or the tuple containing different starting points if more than one annealer is used
         """
         pass
 
     def on_fit_end(self, val):
         """
         This method is called by the fitter after optimisation. The argument passed is either the result of the 
-        optimiser (for single annealer) or the list of results if more than one annealer reached the end of fit.
+        optimiser (for single annealer) or the list of results if more than one annealer reache the end of fit.
         """
         pass
-
 
 bounds, acceptance, n = np.array([[0, 5], [-1, 1]]), 0.01, 5
 
@@ -179,6 +194,10 @@ class LossFunc2D:
         self.constraints = None
 
     def __call__(self, w) -> float:
+        """
+        A __call__ method must be present. It will be called to evaluate the loss. The argument passed is the 
+        parameter value at which the loss has to be computed.
+        """
         x = w[0]
         y = w[1]
         return (x - 5) * (x - 2) * (x - 1) * x + 10 * y ** 2
@@ -186,14 +205,14 @@ class LossFunc2D:
     def on_fit_start(self, val):
         """
         This method is called by the fitter before optimisation. The argument passed is either the starting point of the
-        optimiser (for single annealer) or the tuple containing different starting points if more than one annealer is used/
+        optimiser (for single annealer) or the tuple containing different starting points if more than one annealer is used
         """
         pass
 
     def on_fit_end(self, val):
         """
         This method is called by the fitter after optimisation. The argument passed is either the result of the 
-        optimiser (for single annealer) or the list of results if more than one annealer reached the end of fit.
+        optimiser (for single annealer) or the list of results if more than one annealer reache the end of fit.
         """
         pass
 
