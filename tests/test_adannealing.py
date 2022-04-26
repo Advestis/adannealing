@@ -1,11 +1,9 @@
 import pytest
 import numpy as np
-from adannealing import Annealer
+from adannealing import Annealer, AbstractLoss
 
 
 class WrongLoss:
-    def __init__(self):
-        self.constraints = None
 
     def __call__(self, x, y) -> float:
         return (x ** 2 + y ** 2) ** 2 - (x ** 2 + y ** 2)
@@ -17,14 +15,11 @@ class WrongLoss:
         pass
 
 
-class LossFunc:
-    def __init__(self):
-        self.constraints = None
-        self.common_shape = None
+class WrongLoss2(AbstractLoss):
 
-    def __call__(self, w) -> float:
-        x = w[0]
-        return (x - 5) * (x - 2) * (x - 1) * x
+    # noinspection PyMethodOverriding
+    def __call__(self, x, y) -> float:
+        return (x ** 2 + y ** 2) ** 2 - (x ** 2 + y ** 2)
 
     def on_fit_start(self, val):
         pass
@@ -33,14 +28,25 @@ class LossFunc:
         pass
 
 
-class LossFunc2D:
-    def __init__(self):
-        self.constraints = None
+class LossFunc(AbstractLoss):
+
+    def __call__(self, w) -> float:
+        x = w[0]
+        return ((x - 5) * (x - 2) * (x - 1) * x)[0]
+
+    def on_fit_start(self, val):
+        pass
+
+    def on_fit_end(self, val):
+        pass
+
+
+class LossFunc2D(AbstractLoss):
 
     def __call__(self, w) -> float:
         x = w[0]
         y = w[1]
-        return (x - 5) * (x - 2) * (x - 1) * x + 10 * y ** 2
+        return ((x - 5) * (x - 2) * (x - 1) * x + 10 * y ** 2)[0]
 
     def on_fit_start(self, val):
         pass
@@ -74,7 +80,7 @@ class LossFunc2D:
             None,
             False,
             TypeError,
-            "The loss function must be callable",
+            "The loss function must derive from AbstractLoss",
         ),
         (
             WrongLoss(),
@@ -86,8 +92,21 @@ class LossFunc2D:
             None,
             None,
             False,
+            TypeError,
+            "The loss function must derive from AbstractLoss",
+        ),
+        (
+            WrongLoss2(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            False,
             ValueError,
-            "The loss function must accept exactly 1 parameter(s)",
+            "The loss function must accept exactly 1 parameter",
         ),
         (
             LossFunc(),

@@ -3,11 +3,12 @@ import logging
 import json
 import pandas as pd
 import warnings
+from adannealing import AbstractLoss
 
 logger = logging.getLogger(__name__)
 
 
-class LossPortfolioMeanVar:
+class LossPortfolioMeanVar(AbstractLoss):
     def __init__(
         self,
         wt_1_np: np.array,
@@ -23,7 +24,6 @@ class LossPortfolioMeanVar:
         continous_window: bool,
         n: int,
     ):
-
         self.wt_1_np = wt_1_np
         self.r_np = r_np
         self.lambda_risk = lambda_risk
@@ -57,7 +57,7 @@ class LossPortfolioMeanVar:
             try:
                 assert all(
                     map(
-                        lambda a: a[0] > a[1][0] and a[0] < a[1][1],
+                        lambda a: a[1][0] < a[0] < a[1][1],
                         zip(solution, self.constraints),
                     )
                 )
@@ -140,7 +140,7 @@ class LossPortfolioMeanVar:
 
         elif isinstance(best_fit, tuple):
             logger.info("------Single Final Status components------")
-            logger.info(self.__call__(best_fit[0].reshape(-1,1)))
+            logger.info(self.__call__(best_fit[0].reshape(-1, 1)))
             self.check_solution(best_fit[0].reshape(-1, 1))
 
         else:

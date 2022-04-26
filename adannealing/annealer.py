@@ -2,12 +2,11 @@ import math
 import os
 from time import sleep, time
 import plotly.graph_objects as go
-from typing import Callable, Dict, Any, Collection, List
+from typing import Dict, Any, Collection, List, Union, Tuple, Optional
 import inspect
 import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from more_itertools import distinct_combinations
-from typing import Union, Tuple, Optional
 import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
@@ -23,6 +22,63 @@ import pandas as pd
 from .plotting import Sampler, SamplePoint
 
 logger = logging.getLogger(__name__)
+
+
+class AbstractLoss:
+    """Abstract class from which any loss given to `adannealing.annealer.Annealer` must derive.
+
+    The __init__ function must be entierly defined by the user. If the object has the attribute "constraints", it will
+    be detected by the `adannealing.annealer.Annealer` as constraints that should be applied to the loss.
+    """
+
+    def __call__(self, w: np.array) -> float:
+        """It will be called to evaluate the loss at a given set of weights.
+
+        To be implemented in daughter class
+
+        Parameters
+        ----------
+        w: np.array
+            Weights at which to compute the loss
+        """
+        pass
+
+    def on_fit_start(self, val: Union[np.array, Tuple[np.array]]):
+        """
+        This method is called by the fitter before optimisation.
+
+        To be implemented in daughter class
+
+        Parameters
+        ----------
+        val: Union[np.array, Tuple[np.array]]
+            Either the starting weights of the optimiser (for single annealer) or the tuple containing different
+            starting weights if more than one annealer are used.
+        """
+        pass
+
+    def on_fit_end(
+        self,
+        val: Union[
+            List[Tuple[np.ndarray, float, float, Sampler, Sampler, bool]],
+            Tuple[np.ndarray, float, float, Sampler, Sampler, bool],
+        ],
+    ):
+        """
+        This method is called by the fitter after optimisation.
+
+        To be implemented in daughter class
+
+        Parameters
+        ----------
+        val: Union[
+            List[Tuple[np.ndarray, float, float, Sampler, Sampler, bool]],
+            Tuple[np.ndarray, float, float, Sampler, Sampler, bool],
+        ]
+            Either the result of the optimiser (for single annealer) or the list of results if more than one annealer
+            reaches the end of fit.
+        """
+        pass
 
 
 def clean_dir(path: Path) -> None:
@@ -295,8 +351,7 @@ class Annealer:
 
     def __init__(
         self,
-        # TODO : loss is now an instance of a class
-        loss: Callable,
+        loss: AbstractLoss,
         weights_step_size: Union[float, tuple, list, set, np.ndarray],
         bounds: Optional[Union[tuple, list, set, np.ndarray]] = None,
         init_states: Optional[Union[tuple, list, set, np.ndarray]] = None,
@@ -309,16 +364,14 @@ class Annealer:
         cooling_schedule: str = "arithmetic-geometric",
         annealing_type: str = "canonical",
         history_path: Optional[str] = None,
-        loss_kwargs: Optional[dict] = None,
         logger_level=None,
         optimal_step_size=False,
     ):
         """
         Parameters
         ----------
-        loss: Callable
-            The loss function to minimize. First argument is the np.ndarrays of all weights. It can also accept other
-            keyword arguments, passed through the 'loss_kwargs' dictionnary.
+        loss: AbstractLoss
+            The loss function to minimize. First and only argument is the np.ndarrays of all weights.
         weights_step_size: Union[float, tuple, list, set, np.ndarray]
             Size of the variation to apply to each weights at each epoch. If a float is given, the same size is used for
             every weight. If a np.ndarray is given, it must have 'dimensions' entries, each entry will be the step size
@@ -351,8 +404,6 @@ class Annealer:
             Can be 'canonical' or 'microcanonical'
         history_path: str
             If specified, fit will be stored here. Must be an existing directory.
-        loss_kwargs: dict
-            Additionnal kwargs for loss function
         logger_level: str
             Logger level
         optimal_step_size: bool
@@ -361,6 +412,7 @@ class Annealer:
         The number of iterations will be equal to int((temp_0 - temp_min) / temp_step_size).
         If temp_step_size is not specified, then the number of iterations is equal to 200. (0.5% at each step).
         """
+        self.results = None
         if logger_level is not None:
             global logger
             logger.setLevel(logger_level)
@@ -375,14 +427,10 @@ class Annealer:
 
         self.dimensions = None
 
-        if loss_kwargs is not None:
-            self.loss_kwargs = loss_kwargs
-        else:
-            self.loss_kwargs = {}
-        if not isinstance(loss, Callable):
-            raise TypeError(f"The loss function must be callable, got a {type(loss)} instead")
-        if len(inspect.signature(loss).parameters) != 1 + len(self.loss_kwargs):
-            raise ValueError(f"The loss function must accept exactly {1 + len(self.loss_kwargs)} parameter(s)")
+        if not issubclass(loss.__class__, AbstractLoss):
+            raise TypeError(f"The loss function must derive from AbstractLoss, got a {type(loss)} instead")
+        if len(inspect.signature(loss).parameters) != 1:
+            raise ValueError(f"The loss function must accept exactly 1 parameter")
         self.loss = loss
 
         if weights_step_size is None:
@@ -390,12 +438,15 @@ class Annealer:
         if iterations is None:
             raise TypeError("'iterations' can not be None")
 
-        if loss.constraints is not None:
+        # noinspection PyUnresolvedReferences
+        if hasattr(loss, "constraints") and loss.constraints is not None:
             # parts of bounds will be overwritten
+            # noinspection PyUnresolvedReferences
             limits_ = np.array(loss.constraints)
             if bounds is None:
                 bounds = limits_
             else:
+                # Do not use 'is not None' in order to have an iterable of booleans instead of only one boolean.
                 mask = (limits_ != None).astype(int)
                 bounds = np.ma.array(bounds, mask=mask).filled(fill_value=limits_)
 
@@ -407,9 +458,11 @@ class Annealer:
             raise ValueError("At least one of 'init_states' and 'bounds' must be specified")
 
         if bounds is not None and init_states is not None:
+            # noinspection PyUnboundLocalVariable
             logger.warning("Specified bounds and init_states. Bounds are then ignored.")
 
         if init_states is None:
+            # Do not use 'is not None' in order to have an iterable of booleans instead of only one boolean.
             assert ~(bounds == None).any()
             bounds = to_array(bounds, "bounds")
             if bounds.ndim != 2 or bounds.shape[1] != 2:
@@ -664,7 +717,6 @@ class Annealer:
         cooling_schedule: Optional[str] = None,
         annealing_type: Optional[str] = None,
         verbose: bool = True,
-        loss_kwargs: Optional[dict] = None,
         searching_t: bool = False,
     ) -> Union[
         List[Tuple[np.ndarray, float, float, Sampler, Sampler, bool]],
@@ -711,9 +763,6 @@ class Annealer:
 
         if verbose and cooling_schedule == "canonical":
             self._info(f"Fitting with cooling schedule '{cooling_schedule}'")
-
-        if loss_kwargs is None:
-            loss_kwargs = self.loss_kwargs
 
         if init_states is not None:
             if isinstance(init_states, int):
@@ -779,7 +828,6 @@ class Annealer:
                     cooling_schedule=cooling_schedule,
                     annealing_type=annealing_type,
                     history_path=str(history_path / str(i)) if history_path is not None else None,
-                    loss_kwargs=loss_kwargs,
                 )
                 for i in range(npoints)
             ]
@@ -845,7 +893,7 @@ class Annealer:
     def _arithmetic_geometric_cooling(temp, alpha, temp_min):
         return temp * alpha + (temp_min * (1 - alpha))
 
-    def _take_step(self, curr, loss_kwargs):
+    def _take_step(self, curr):
         unit_v = np.random.uniform(size=(1, self.dimensions))
         unit_v = unit_v / np.linalg.norm(unit_v)
         assert np.isclose(np.linalg.norm(unit_v), 1.0)
@@ -853,9 +901,7 @@ class Annealer:
         np.fill_diagonal(cov, self.weights_step_size)
         candidate = np.random.multivariate_normal(mean=curr.ravel(), cov=cov).reshape(curr.shape)
 
-        candidate_loss = self.loss(candidate, **loss_kwargs)
-        if hasattr(candidate_loss, "__len__") and len(candidate_loss) == 1:
-            candidate_loss = candidate_loss[0]
+        candidate_loss = self.loss(candidate)
         if not isinstance(candidate_loss, (int, float)):
             raise ValueError(f"Return of loss function should be a number, got {type(candidate_loss)}")
         return candidate, candidate_loss
@@ -866,7 +912,6 @@ class Annealer:
         stopping_limit: Optional[float] = None,
         history_path: Optional[Union[str, Path]] = None,
         init_states: Optional[np.ndarray] = None,
-        loss_kwargs: Optional[dict] = None,
     ) -> Tuple[np.ndarray, float, float, Sampler, Sampler, bool]:
         """Microcanonical annealing"""
 
@@ -883,9 +928,6 @@ class Annealer:
             init_states = self.init_states
         init_states = init_states.reshape(-1, 1)
 
-        if loss_kwargs is None:
-            loss_kwargs = self.loss_kwargs
-
         if iterations < 5000 and stopping_limit is not None:
             logger.warning(
                 "Outer loop iterations should not be less than 5000 if using a stopping limit." " Using 5000 instead."
@@ -899,7 +941,7 @@ class Annealer:
             raise ValueError("Number of outer iterations must be an integer greater than 0")
 
         curr = init_states.copy()
-        curr_loss = self.loss(curr, **loss_kwargs)
+        curr_loss = self.loss(curr)
         while hasattr(curr_loss, "__len__") and len(curr_loss) == 1:
             curr_loss = curr_loss[0]
         if not isinstance(curr_loss, (int, float)):
@@ -921,7 +963,7 @@ class Annealer:
         demon_loss = 0
 
         for i_ in range(iterations):
-            candidate, candidate_loss = self._take_step(curr, loss_kwargs)
+            candidate, candidate_loss = self._take_step(curr)
 
             diff = candidate_loss - curr_loss
             accepted = diff < 0 or diff <= demon_loss
@@ -999,7 +1041,6 @@ class Annealer:
         history_path: Optional[Union[str, Path]] = None,
         init_states: Optional[np.ndarray] = None,
         cooling_schedule: Optional[str] = None,
-        loss_kwargs: Optional[dict] = None,
     ) -> Tuple[np.ndarray, float, float, Sampler, Sampler, bool]:
         """Canonical annealing
 
@@ -1036,7 +1077,6 @@ class Annealer:
         history_path: Optional[Union[str, Path]]
         init_states: Optional[np.ndarray]
         cooling_schedule: Optional[str]
-        loss_kwargs: Optional[dict]
 
         All parameters are optional.
         Those which are not specified will default to the values specified in self.__init__.
@@ -1083,9 +1123,6 @@ class Annealer:
         if cooling_schedule is None:
             cooling_schedule = self.cooling_schedule
 
-        if loss_kwargs is None:
-            loss_kwargs = self.loss_kwargs
-
         if iterations < 5000 and stopping_limit is not None:
             logger.warning("Iteration should not be less than 5000 if using a stopping limit. Using 5000 instead.")
             iterations = 5000
@@ -1103,7 +1140,7 @@ class Annealer:
         self._info(f"Starting temp : {round(temp_0, 3)}")
         temp = temp_0
         curr = init_states.copy()
-        curr_loss = self.loss(curr, **loss_kwargs)
+        curr_loss = self.loss(curr)
         while hasattr(curr_loss, "__len__") and len(curr_loss) == 1:
             curr_loss = curr_loss[0]
         if not isinstance(curr_loss, (int, float)):
@@ -1124,7 +1161,7 @@ class Annealer:
         prev_loss = None
 
         for i_ in range(iterations):
-            candidate, candidate_loss = self._take_step(curr, loss_kwargs)
+            candidate, candidate_loss = self._take_step(curr)
 
             diff = candidate_loss - curr_loss
             accepted = diff < 0
