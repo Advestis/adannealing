@@ -1,5 +1,5 @@
 from .annealer import Annealer
-try:
-    from ._version import __version__
-except ImportError:
-    pass
+from .plotting import plot
+
+from . import _version
+__version__ = _version.get_versions()['version']
