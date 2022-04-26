@@ -50,19 +50,21 @@ class LossPortfolioMeanVar(AbstractLoss):
                 assert np.isclose(np.sum(solution), self.sum_w_target, rtol=1e-2)
             except AssertionError:
                 logger.info("The solution DOES NOT respect the constraint on the sum of the components.")
+                logger.info(f"Target {self.sum_w_target} | Your solution {np.sum(solution)}")
             else:
                 logger.info("The solution DOES respect the constraint on the sum of the components.")
 
         if self.constraints is not None:
+            solution_constraints = zip(solution, self.constraints)
+            list_tests = map(
+                lambda a: (a[1][0] < a[0] < a[1][1])[0],
+                solution_constraints,
+            )
             try:
-                assert all(
-                    map(
-                        lambda a: a[1][0] < a[0] < a[1][1],
-                        zip(solution, self.constraints),
-                    )
-                )
+                assert all(list_tests)
             except AssertionError:
                 logger.info("The solution DOES NOT respect the constraints.")
+
             else:
                 logger.info("The solution DOES respect the constraints.")
 
@@ -72,6 +74,8 @@ class LossPortfolioMeanVar(AbstractLoss):
                 assert np.isclose(sparse_term, 0.0, atol=1e-3)
             except AssertionError:
                 logger.info("The solution DOES NOT meet the requested level of sparsity.")
+                your_sprasity = np.linalg.norm(solution) ** 2 / np.linalg.norm(solution, ord=1) ** 2
+                logger.info(f"Sparsity target {self.sparsity_target} | Your solution {your_sprasity}")
             else:
                 logger.info("The solution DOES meet the requested level of sparsity.")
 

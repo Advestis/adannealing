@@ -347,6 +347,9 @@ class Annealer:
         if history_path is not None:
             results[-3].data.to_csv(Path(history_path) / "history.csv")
             results[-2].data.to_csv(Path(history_path) / "result.csv")
+
+        # TODO : instability: depending on the number of initial annealers, the solution in the first position
+        # TODO : of results is either a column or row vector
         return results
 
     def __init__(
@@ -509,7 +512,7 @@ class Annealer:
         # Experimental
         if optimal_step_size:
             self._info("optimal_step_size is True: this is experimental.")
-            self.weights_step_size = np.abs(self.bounds[:, 0] - self.bounds[:, 1]) ** 2
+            self.weights_step_size = np.abs(self.bounds[:, 0] - self.bounds[:, 1]) ** 2 / 100.
 
         if temp_0 is not None:
             if isinstance(temp_0, int):
@@ -1507,6 +1510,9 @@ class Annealer:
                 for k in range(len(temps)):
                     z_explored[k] = objective_2d(col, row, explored_w_x[k], explored_w_y[k])
 
+                tickvals = np.arange(np.floor(np.log10(np.min(temps))), np.ceil(np.log10(np.max(temps))))
+                ticktext = [str(10 ** val) for val in tickvals]
+
                 fig_3d.add_scatter3d(
                     # for some reason, need to transpose
                     x=explored_w_x,
@@ -1515,9 +1521,11 @@ class Annealer:
                     mode="markers",
                     marker=dict(
                         size=1.2,
-                        color=temps,
+                        color=np.log10(temps),
                         symbol=list(map(lambda val: "x" if val else "circle", accepted)),
                         showscale=True,
+                        colorbar=dict(tickvals=tickvals, ticktext=ticktext),
+                        colorscale='inferno'
                     ),
                     row=1,
                     col=1,
@@ -1526,8 +1534,8 @@ class Annealer:
                 # TODO : add title to colorbar
                 fig_3d.add_scatter3d(
                     # for some reason, need to transpose
-                    x=[self.results[0][col]],
-                    y=[self.results[0][row]],
+                    x=[self.results[0].reshape(-1, 1)[col][0]],
+                    y=[self.results[0].reshape(-1, 1)[row][0]],
                     z=[self.results[1]],
                     mode="markers",
                     marker=dict(
