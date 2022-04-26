@@ -6,7 +6,7 @@ os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 
-from profiling.financial import load_financial_configurations, analy_optim_mean_var, loss_portfolio_mean_var
+from profiling.financial import load_financial_configurations, analy_optim_mean_var, LossPortfolioMeanVar
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -15,11 +15,11 @@ from pathlib import Path
 import logging
 
 from adutils import setup_logger
-from adlearn.engine import get_engine
+from adlearn.engine import Engine
 
 logger = logging.getLogger(__name__)
 
-engine = get_engine(kind="multiproc", context="spawn", print_percent=None, max_cpus=10)
+engine = Engine(kind="multiproc", context="spawn", print_percent=None, max_cpus=10)
 
 setup_logger()
 
@@ -61,7 +61,7 @@ def run(number_isins_cut):
         cut=cut,
         return_cond=True,
     )
-    loss_at_min = loss_portfolio_mean_var(
+    loss_at_min = LossPortfolioMeanVar(
         wt_np=analy_opt,
         wt_1_np=weights_day_before.to_numpy(),
         r_np=selected_returns.loc[date].to_numpy().reshape((number_isins, 1)),

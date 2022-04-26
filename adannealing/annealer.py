@@ -1,21 +1,84 @@
 import math
 import os
 from time import sleep, time
-
-import numpy as np
-from typing import Callable, Union, Dict, Any, Collection, Optional, Tuple, List
-import logging
+import plotly.graph_objects as go
+from typing import Dict, Any, Collection, List, Union, Tuple, Optional
 import inspect
-from pathlib import Path
 import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from more_itertools import distinct_combinations
+import matplotlib.pyplot as plt
+import numpy as np
+from pathlib import Path
+from matplotlib.colors import LogNorm
+from matplotlib.gridspec import GridSpec
+import logging
+import matplotlib.markers as mmarkers
+from plotly.subplots import make_subplots
+import itertools
 
 import pandas as pd
 
 from .plotting import Sampler, SamplePoint
 
 logger = logging.getLogger(__name__)
+
+
+class AbstractLoss:
+    """Abstract class from which any loss given to `adannealing.annealer.Annealer` must derive.
+
+    The __init__ function must be entierly defined by the user. If the object has the attribute "constraints", it will
+    be detected by the `adannealing.annealer.Annealer` as constraints that should be applied to the loss.
+    """
+
+    def __call__(self, w: np.array) -> float:
+        """It will be called to evaluate the loss at a given set of weights.
+
+        To be implemented in daughter class
+
+        Parameters
+        ----------
+        w: np.array
+            Weights at which to compute the loss
+        """
+        pass
+
+    def on_fit_start(self, val: Union[np.array, Tuple[np.array]]):
+        """
+        This method is called by the fitter before optimisation.
+
+        To be implemented in daughter class
+
+        Parameters
+        ----------
+        val: Union[np.array, Tuple[np.array]]
+            Either the starting weights of the optimiser (for single annealer) or the tuple containing different
+            starting weights if more than one annealer are used.
+        """
+        pass
+
+    def on_fit_end(
+        self,
+        val: Union[
+            List[Tuple[np.ndarray, float, float, Sampler, Sampler, bool]],
+            Tuple[np.ndarray, float, float, Sampler, Sampler, bool],
+        ],
+    ):
+        """
+        This method is called by the fitter after optimisation.
+
+        To be implemented in daughter class
+
+        Parameters
+        ----------
+        val: Union[
+            List[Tuple[np.ndarray, float, float, Sampler, Sampler, bool]],
+            Tuple[np.ndarray, float, float, Sampler, Sampler, bool],
+        ]
+            Either the result of the optimiser (for single annealer) or the list of results if more than one annealer
+            reaches the end of fit.
+        """
+        pass
 
 
 def clean_dir(path: Path) -> None:
@@ -135,7 +198,12 @@ class Annealer:
 
     __PARALLEL = False
     __CPU_LIMIT = os.cpu_count()
-    __POSSIBLE_SCHEDULES = ["logarithmic", "linear", "geometric", "arithmetic-geometric"]
+    __POSSIBLE_SCHEDULES = [
+        "logarithmic",
+        "linear",
+        "geometric",
+        "arithmetic-geometric",
+    ]
 
     @classmethod
     def set_parallel(cls):
@@ -176,7 +244,10 @@ class Annealer:
     # noinspection PyUnresolvedReferences
     @classmethod
     def _fit_many(
-        cls, iterable: Collection["Annealer"], stop_at_first_found: bool, history_path: Union[None, str, Path]
+        cls,
+        iterable: Collection["Annealer"],
+        stop_at_first_found: bool,
+        history_path: Union[None, str, Path],
     ) -> Union[
         List[Tuple[np.ndarray, float, float, Sampler, Sampler, bool]],
         Tuple[np.ndarray, float, float, Sampler, Sampler, bool],
@@ -196,7 +267,7 @@ class Annealer:
 
         Parameters
         ----------
-        iterable: Callable[Annealer]
+        iterable: Collection[Annealer]
         stop_at_first_found: bool
         history_path: Union[None, str, Path]
 
@@ -280,7 +351,7 @@ class Annealer:
 
     def __init__(
         self,
-        loss: Callable,
+        loss: AbstractLoss,
         weights_step_size: Union[float, tuple, list, set, np.ndarray],
         bounds: Optional[Union[tuple, list, set, np.ndarray]] = None,
         init_states: Optional[Union[tuple, list, set, np.ndarray]] = None,
@@ -293,22 +364,18 @@ class Annealer:
         cooling_schedule: str = "arithmetic-geometric",
         annealing_type: str = "canonical",
         history_path: Optional[str] = None,
-        loss_kwargs: Optional[dict] = None,
+        logger_level=None,
+        optimal_step_size=False,
     ):
         """
         Parameters
         ----------
-        loss: Callable
-            The loss function to minimize. First argument is the np.ndarrays of all weights. It can also accept other
-            keyword arguments, passed through the 'loss_kwargs' dictionnary.
+        loss: AbstractLoss
+            The loss function to minimize. First and only argument is the np.ndarrays of all weights.
         weights_step_size: Union[float, tuple, list, set, np.ndarray]
             Size of the variation to apply to each weights at each epoch. If a float is given, the same size is used for
             every weight. If a np.ndarray is given, it must have 'dimensions' entries, each entry will be the step size
             of one weight.
-        bounds: Union[tuple, list, set, np.ndarray]
-            Optional. The limit of the weights, used to determine initial state.
-            Must be a 2-D array of size ('dimensions', 2). Note that if bounds are not specified,
-            then init_states must be, and vice-versa.
         init_states: Union[tuple, list, set, np.ndarray]
             Optional. Initial values of the weights. Will use random values using 'bounds' if not specified.
             If specified, its size defines the number of dimensions. Note that if init_states are not specified,
@@ -337,12 +404,22 @@ class Annealer:
             Can be 'canonical' or 'microcanonical'
         history_path: str
             If specified, fit will be stored here. Must be an existing directory.
-        loss_kwargs: dict
-            Additionnal kwargs for loss function
+        logger_level: str
+            Logger level
+        optimal_step_size: bool
+            If True, weights_step_size is overwritten considering the typical scale fixed by the bounds of the annealer
 
         The number of iterations will be equal to int((temp_0 - temp_min) / temp_step_size).
         If temp_step_size is not specified, then the number of iterations is equal to 200. (0.5% at each step).
         """
+        self.results = None
+        if logger_level is not None:
+            global logger
+            logger.setLevel(logger_level)
+
+        if not isinstance(verbose, bool):
+            raise TypeError(f"'verbose' must be a boolean, got {type(verbose)} instead.")
+        self.verbose = verbose
 
         if annealing_type != "canonical" and annealing_type != "microcanonical":
             raise ValueError(f"Unknown annealing type '{annealing_type}'. Can be 'canonical' or 'microcanonical'")
@@ -350,14 +427,10 @@ class Annealer:
 
         self.dimensions = None
 
-        if loss_kwargs is not None:
-            self.loss_kwargs = loss_kwargs
-        else:
-            self.loss_kwargs = {}
-        if not isinstance(loss, Callable):
-            raise TypeError(f"The loss function must be callable, got a {type(loss)} instead")
-        if len(inspect.signature(loss).parameters) != 1 + len(self.loss_kwargs):
-            raise ValueError(f"The loss function must accept exactly {1 + len(self.loss_kwargs)} parameter(s)")
+        if not issubclass(loss.__class__, AbstractLoss):
+            raise TypeError(f"The loss function must derive from AbstractLoss, got a {type(loss)} instead")
+        if len(inspect.signature(loss).parameters) != 1:
+            raise ValueError(f"The loss function must accept exactly 1 parameter")
         self.loss = loss
 
         if weights_step_size is None:
@@ -365,13 +438,32 @@ class Annealer:
         if iterations is None:
             raise TypeError("'iterations' can not be None")
 
+        # noinspection PyUnresolvedReferences
+        if hasattr(loss, "constraints") and loss.constraints is not None:
+            # parts of bounds will be overwritten
+            # noinspection PyUnresolvedReferences
+            limits_ = np.array(loss.constraints)
+            if bounds is None:
+                bounds = limits_
+            else:
+                # Do not use 'is not None' in order to have an iterable of booleans instead of only one boolean.
+                mask = (limits_ != None).astype(int)
+                bounds = np.ma.array(bounds, mask=mask).filled(fill_value=limits_)
+
+        else:
+            # else .... bounds are the same as in previous version
+            pass
+
         if bounds is None and init_states is None:
             raise ValueError("At least one of 'init_states' and 'bounds' must be specified")
 
         if bounds is not None and init_states is not None:
+            # noinspection PyUnboundLocalVariable
             logger.warning("Specified bounds and init_states. Bounds are then ignored.")
 
         if init_states is None:
+            # Do not use 'is not None' in order to have an iterable of booleans instead of only one boolean.
+            assert ~(bounds == None).any()
             bounds = to_array(bounds, "bounds")
             if bounds.ndim != 2 or bounds.shape[1] != 2:
                 raise ValueError(f"'bounds' dimension should be (any, 2), got {bounds.shape}")
@@ -414,6 +506,11 @@ class Annealer:
             weights_step_size = np.array([weights_step_size for _ in range(self.dimensions)])
         self.weights_step_size = weights_step_size
 
+        # Experimental
+        if optimal_step_size:
+            self._info("optimal_step_size is True: this is experimental.")
+            self.weights_step_size = np.abs(self.bounds[:, 0] - self.bounds[:, 1]) ** 2
+
         if temp_0 is not None:
             if isinstance(temp_0, int):
                 temp_0 = float(temp_0)
@@ -442,10 +539,6 @@ class Annealer:
             if not (0 < alpha <= 1):
                 raise ValueError("'alpha' must be between 0 excluded and 1.")
         self.alpha = alpha
-
-        if not isinstance(verbose, bool):
-            raise TypeError(f"'verbose' must be a boolean, got {type(verbose)} instead.")
-        self.verbose = verbose
 
         if not isinstance(iterations, int) or iterations <= 0:
             raise ValueError(f"Number of iterations must be an integer greater than 0, got {iterations}")
@@ -542,7 +635,9 @@ class Annealer:
             verbose=False,
             stopping_limit=None,
         )
-        _, _, acc_ratio_1, _, _, _ = ann.fit(temp_0=t1, iterations=1000, stopping_limit=None, verbose=False)
+        _, _, acc_ratio_1, _, _, _ = ann.fit(
+            temp_0=t1, iterations=1000, stopping_limit=None, verbose=False, searching_t=True
+        )
 
         if ar_limit_low < acc_ratio_1 < ar_limit_up:
             # Lucky strike : t0 is already good !
@@ -557,7 +652,9 @@ class Annealer:
                         f"and {ar_limit_up} in less than {max_attempts} attempts"
                     )
                 t1 = t1 / 10
-                _, _, acc_ratio_1, _, _, _ = ann.fit(temp_0=t1, iterations=1000, stopping_limit=None, verbose=False)
+                _, _, acc_ratio_1, _, _, _ = ann.fit(
+                    temp_0=t1, iterations=1000, stopping_limit=None, verbose=False, searching_t=True
+                )
                 attempts += 1
 
             attempts = 0
@@ -567,10 +664,13 @@ class Annealer:
                         f"Could not find a temperature giving an acceptance ratio between {ar_limit_low} "
                         f"and {ar_limit_up} in less than {max_attempts} attempts"
                     )
-                _, _, acc_ratio_2, _, _, _ = ann.fit(temp_0=t2, stopping_limit=None, verbose=False)
-                self._debug(f"Attempt {attempts}")
-                self._debug(f"t1: {t1}, Acc. ratio : {acc_ratio_1} (fixed)")
-                self._debug(f"t2: {t2}, Acc. ratio : {acc_ratio_2}")
+                _, _, acc_ratio_2, _, _, _ = ann.fit(
+                    temp_0=t2, iterations=1000, stopping_limit=None, verbose=False, searching_t=True
+                )
+                self._info(f"---------------------------------------------")
+                self._info(f"Attempt {attempts}")
+                self._info(f"t1: {t1}, Acc. ratio : {acc_ratio_1} (fixed)")
+                self._info(f"t2: {t2}, Acc. ratio : {acc_ratio_2}\n")
 
                 if ar_limit_low < acc_ratio_2 < ar_limit_up:
                     break
@@ -617,7 +717,7 @@ class Annealer:
         cooling_schedule: Optional[str] = None,
         annealing_type: Optional[str] = None,
         verbose: bool = True,
-        loss_kwargs: Optional[dict] = None,
+        searching_t: bool = False,
     ) -> Union[
         List[Tuple[np.ndarray, float, float, Sampler, Sampler, bool]],
         Tuple[np.ndarray, float, float, Sampler, Sampler, bool],
@@ -636,6 +736,9 @@ class Annealer:
             annealing_type = self.annealing_type
         if annealing_type != "canonical" and annealing_type != "microcanonical":
             raise ValueError(f"Unknown annealing type '{annealing_type}'. Can be 'canonical' or 'microcanonical'")
+
+        if annealing_type == "microcanonical":
+            raise NotImplementedError
 
         if alpha is None:
             alpha = self.alpha
@@ -661,9 +764,6 @@ class Annealer:
         if verbose and cooling_schedule == "canonical":
             self._info(f"Fitting with cooling schedule '{cooling_schedule}'")
 
-        if loss_kwargs is None:
-            loss_kwargs = self.loss_kwargs
-
         if init_states is not None:
             if isinstance(init_states, int):
                 init_states = float(init_states)
@@ -679,19 +779,23 @@ class Annealer:
                 init_states = init_states.reshape(1, init_states.shape[0])
 
         if npoints == 1:
+            initialisation = self.init_states if init_states is None else init_states
+            if not searching_t:
+                self.loss.on_fit_start(initialisation)
             if annealing_type == "canonical":
-                return self._fit_one_canonical(
+                results = self._fit_one_canonical(
                     alpha,
                     temp_min,
                     temp_0,
                     iterations,
                     stopping_limit,
                     history_path,
-                    self.init_states if init_states is None else init_states,
+                    initialisation,
                     cooling_schedule,
                 )
             else:
-                return self._fit_one_micronanonical(iterations, stopping_limit, history_path, init_states)
+                results = self._fit_one_micronanonical(iterations, stopping_limit, history_path, init_states)
+
         else:
             if self.bounds is None:
                 raise ValueError(
@@ -707,11 +811,14 @@ class Annealer:
                 )
             if history_path is not None:
                 [(history_path / str(i)).mkdir() for i in range(npoints) if not (history_path / str(i)).is_dir()]
+            if not searching_t:
+                self.loss.on_fit_start(tuple(init_states))
             annealers = [
                 Annealer(
                     loss=self.loss,
                     weights_step_size=self.weights_step_size,
                     init_states=init_states[i],
+                    bounds=self.bounds,
                     temp_0=temp_0,
                     temp_min=temp_min,
                     alpha=alpha,
@@ -721,16 +828,29 @@ class Annealer:
                     cooling_schedule=cooling_schedule,
                     annealing_type=annealing_type,
                     history_path=str(history_path / str(i)) if history_path is not None else None,
-                    loss_kwargs=loss_kwargs,
                 )
                 for i in range(npoints)
             ]
             # noinspection PyUnboundLocalVariable
-            results = Annealer._fit_many(annealers, stop_at_first_found=stop_at_first_found, history_path=history_path)
-            return results
+            # TODO : the research for the start temperature can be done once for all annealers
+            results = Annealer._fit_many(
+                annealers,
+                stop_at_first_found=stop_at_first_found,
+                history_path=history_path,
+            )
+
+        self.results = results
+        if not searching_t:
+            self.loss.on_fit_end(results)
+        return results
 
     def _get_next_temperature(
-        self, temp: float, alpha: float, method: str, temp_min: Optional[float] = None, t: Optional[int] = None
+        self,
+        temp: float,
+        alpha: float,
+        method: str,
+        temp_min: Optional[float] = None,
+        t: Optional[int] = None,
     ) -> float:
         if method == "logarithmic":
             if alpha <= 0:
@@ -773,17 +893,15 @@ class Annealer:
     def _arithmetic_geometric_cooling(temp, alpha, temp_min):
         return temp * alpha + (temp_min * (1 - alpha))
 
-    def _take_step(self, curr, loss_kwargs):
+    def _take_step(self, curr):
         unit_v = np.random.uniform(size=(1, self.dimensions))
         unit_v = unit_v / np.linalg.norm(unit_v)
         assert np.isclose(np.linalg.norm(unit_v), 1.0)
-        cov = np.zeros((curr.shape[1], curr.shape[1]), float)
+        cov = np.zeros((curr.shape[0], curr.shape[0]), float)
         np.fill_diagonal(cov, self.weights_step_size)
         candidate = np.random.multivariate_normal(mean=curr.ravel(), cov=cov).reshape(curr.shape)
 
-        candidate_loss = self.loss(candidate.T, **loss_kwargs)
-        if hasattr(candidate_loss, "__len__") and len(candidate_loss) == 1:
-            candidate_loss = candidate_loss[0]
+        candidate_loss = self.loss(candidate)
         if not isinstance(candidate_loss, (int, float)):
             raise ValueError(f"Return of loss function should be a number, got {type(candidate_loss)}")
         return candidate, candidate_loss
@@ -794,7 +912,6 @@ class Annealer:
         stopping_limit: Optional[float] = None,
         history_path: Optional[Union[str, Path]] = None,
         init_states: Optional[np.ndarray] = None,
-        loss_kwargs: Optional[dict] = None,
     ) -> Tuple[np.ndarray, float, float, Sampler, Sampler, bool]:
         """Microcanonical annealing"""
 
@@ -809,9 +926,7 @@ class Annealer:
 
         if init_states is None:
             init_states = self.init_states
-
-        if loss_kwargs is None:
-            loss_kwargs = self.loss_kwargs
+        init_states = init_states.reshape(-1, 1)
 
         if iterations < 5000 and stopping_limit is not None:
             logger.warning(
@@ -826,7 +941,7 @@ class Annealer:
             raise ValueError("Number of outer iterations must be an integer greater than 0")
 
         curr = init_states.copy()
-        curr_loss = self.loss(curr.T, **loss_kwargs)
+        curr_loss = self.loss(curr)
         while hasattr(curr_loss, "__len__") and len(curr_loss) == 1:
             curr_loss = curr_loss[0]
         if not isinstance(curr_loss, (int, float)):
@@ -848,7 +963,7 @@ class Annealer:
         demon_loss = 0
 
         for i_ in range(iterations):
-            candidate, candidate_loss = self._take_step(curr, loss_kwargs)
+            candidate, candidate_loss = self._take_step(curr)
 
             diff = candidate_loss - curr_loss
             accepted = diff < 0 or diff <= demon_loss
@@ -863,7 +978,7 @@ class Annealer:
 
             acc_ratio = float(points_accepted) / float(i_ + 1)
             sample = SamplePoint(
-                weights=candidate[0],
+                weights=candidate.T[0],
                 iteration=i_,
                 accepted=accepted,
                 loss=candidate_loss,
@@ -896,7 +1011,6 @@ class Annealer:
                         curr, curr_loss, acc_ratio, last_index = finish(finishing_history)
                         # noinspection PyProtectedMember
                         finishing_history = Sampler(finishing_history._data.iloc[[last_index]])
-                        curr = curr.reshape(1, curr.shape[0])
                         finished = True
                         break
                 else:
@@ -915,7 +1029,7 @@ class Annealer:
             history.data.to_csv(Path(history_path) / "history.csv")
             finishing_history.data.to_csv(Path(history_path) / "result.csv")
 
-        return curr[0], curr_loss, acc_ratio, history, finishing_history, finished
+        return curr, curr_loss, acc_ratio, history, finishing_history, finished
 
     def _fit_one_canonical(
         self,
@@ -927,7 +1041,6 @@ class Annealer:
         history_path: Optional[Union[str, Path]] = None,
         init_states: Optional[np.ndarray] = None,
         cooling_schedule: Optional[str] = None,
-        loss_kwargs: Optional[dict] = None,
     ) -> Tuple[np.ndarray, float, float, Sampler, Sampler, bool]:
         """Canonical annealing
 
@@ -964,7 +1077,6 @@ class Annealer:
         history_path: Optional[Union[str, Path]]
         init_states: Optional[np.ndarray]
         cooling_schedule: Optional[str]
-        loss_kwargs: Optional[dict]
 
         All parameters are optional.
         Those which are not specified will default to the values specified in self.__init__.
@@ -1005,12 +1117,11 @@ class Annealer:
 
         if init_states is None:
             init_states = self.init_states
+        # loss callables work with vertical vectors, while Annealer class works with horizontal vectors
+        init_states = init_states.reshape(-1, 1)
 
         if cooling_schedule is None:
             cooling_schedule = self.cooling_schedule
-
-        if loss_kwargs is None:
-            loss_kwargs = self.loss_kwargs
 
         if iterations < 5000 and stopping_limit is not None:
             logger.warning("Iteration should not be less than 5000 if using a stopping limit. Using 5000 instead.")
@@ -1029,7 +1140,7 @@ class Annealer:
         self._info(f"Starting temp : {round(temp_0, 3)}")
         temp = temp_0
         curr = init_states.copy()
-        curr_loss = self.loss(curr.T, **loss_kwargs)
+        curr_loss = self.loss(curr)
         while hasattr(curr_loss, "__len__") and len(curr_loss) == 1:
             curr_loss = curr_loss[0]
         if not isinstance(curr_loss, (int, float)):
@@ -1048,8 +1159,9 @@ class Annealer:
         finishing = False
         finished = False
         prev_loss = None
+
         for i_ in range(iterations):
-            candidate, candidate_loss = self._take_step(curr, loss_kwargs)
+            candidate, candidate_loss = self._take_step(curr)
 
             diff = candidate_loss - curr_loss
             accepted = diff < 0
@@ -1071,7 +1183,7 @@ class Annealer:
 
             acc_ratio = float(points_accepted) / float(i_ + 1)
             sample = SamplePoint(
-                weights=candidate[0],
+                weights=candidate.T[0],
                 iteration=i_,
                 accepted=accepted,
                 loss=candidate_loss,
@@ -1106,7 +1218,6 @@ class Annealer:
                         curr, curr_loss, acc_ratio, last_index = finish(finishing_history)
                         # noinspection PyProtectedMember
                         finishing_history = Sampler(finishing_history._data.iloc[[last_index]])
-                        curr = curr.reshape(1, curr.shape[0])
                         finished = True
                         break
                 else:
@@ -1125,7 +1236,321 @@ class Annealer:
             history.data.to_csv(Path(history_path) / "history.csv")
             finishing_history.data.to_csv(Path(history_path) / "result.csv")
 
-        return curr[0], curr_loss, acc_ratio, history, finishing_history, finished
+        return curr, curr_loss, acc_ratio, history, finishing_history, finished
+
+    def plot(
+        self,
+        sampler_path: Union[str, Path, Tuple[Sampler, Sampler]],
+        axisfontsize: int = 15,
+        step_size: int = 1,
+        nweights: int = 10,
+        weights_names: Optional[list] = None,
+        do_3d: bool = False,
+    ) -> Union[Tuple[plt.Figure, list], None]:
+        """From a directory containing 'result.csv' and 'history.csv', produces plots.
+        Will produce the file "annealing.pdf" in 'sampler_path' and return the corresponding Figure object.
+        If subfolders themselves containing 'result.csv' and 'history.csv' are present, will plot will call itself on
+        them too.
+        In the plot, will show the first 'nweights'.
+
+        'sampler_path' can also be a tuple of two Sampler objects, the first should then be the full history of the fit
+         and the second the point of the local minimum.
+
+        Parameters
+        ----------
+            sampler_path: Union[str, Path, Tuple[Sampler, Sampler]]
+                Either the path to the directory containing the annealing result, or two Sampler objects
+            axisfontsize: int
+                default value = 15
+            step_size: int
+                plots every 'step_size' iterations instead of all of them (default value = 1)
+            nweights: int
+                Number of weights to display in plots (default value = 10)
+            weights_names: Optional[list]
+                List of names of weights, for axis labels. If None, weights are named using their position index.
+            do_3d: bool
+                Either do or not do 3-dim plot of the annealer evolution
+
+
+        Returns
+        -------
+        Union[Tuple[plt.Figure, go.Figure, list], None]
+            Returns None if the given directory does not contain history.csv or result.csv. Otherwise returns the
+             created figure and the weights and loss of the local minimum.
+        """
+
+        points = []
+
+        if isinstance(sampler_path, (str, Path)):
+            if isinstance(sampler_path, str):
+                sampler_path = Path(sampler_path)
+
+            for directory in sampler_path.glob("*"):
+                if not directory.is_dir():
+                    continue
+                try:
+                    int(directory.stem)
+                except ValueError:
+                    continue
+                points.append(
+                    self.plot(
+                        directory,
+                        axisfontsize,
+                        step_size,
+                        nweights,
+                        weights_names,
+                        do_3d,
+                    )[-1]
+                )
+
+            logger.info(f"Plotting annealing results from {sampler_path}...")
+
+            sampler = sampler_path / "history.csv"
+            final_sampler = sampler_path / "result.csv"
+            if not sampler.is_file():
+                logger.warning(f"No file 'history.csv' found in '{sampler_path}'")
+                return None
+            if not final_sampler.is_file():
+                logger.warning(f"No file 'result.csv' found in '{sampler_path}'")
+                return None
+            sampler = Sampler(pd.read_csv(sampler, index_col=0))
+            final_sampler = Sampler(pd.read_csv(final_sampler, index_col=0))
+
+        else:
+            sampler, final_sampler = sampler_path
+
+        weights = sampler.weights
+        if nweights is None:
+            nweights = 0
+        else:
+            if nweights == "all":
+                nweights = len(weights.columns)
+            else:
+                nweights = min(nweights, len(weights.columns))
+
+        weights = weights.iloc[::step_size, :nweights].values
+        losses = sampler.losses.iloc[::step_size].values
+        iterations = sampler.iterations.values[::step_size]
+        acc_ratios = sampler.acc_ratios.iloc[::step_size].values
+        temps = sampler.parameters.values[::step_size]
+        accepted = sampler.accepted.values[::step_size]
+
+        final_weights = final_sampler.weights.iloc[0, :nweights].values
+        final_loss = final_sampler.losses.values
+
+        grid = GridSpec(
+            3 + nweights,
+            6,
+            left=0.05,
+            right=0.9,
+            bottom=0.03,
+            top=0.97,
+            hspace=0.3,
+            wspace=0.5,
+        )
+        fig = plt.figure(figsize=(22, 3 * (nweights + 3)))
+
+        first_ax = fig.add_subplot(grid[0, :])
+        second_ax = fig.add_subplot(grid[1, :])
+        third_ax = fig.add_subplot(grid[2, :])
+        first_ax.set_xlabel("Iterations", fontsize=axisfontsize)
+        first_ax.set_ylabel("Temp", fontsize=axisfontsize)
+        second_ax.set_xlabel("Iterations", fontsize=axisfontsize)
+        second_ax.set_ylabel("Acc. ratio", fontsize=axisfontsize)
+        third_ax.set_xlabel("Iterations", fontsize=axisfontsize)
+        third_ax.set_ylabel("Loss", fontsize=axisfontsize)
+        first_ax.grid(True, ls="--", lw=0.2, alpha=0.5)
+        second_ax.grid(True, ls="--", lw=0.2, alpha=0.5)
+        third_ax.grid(True, ls="--", lw=0.2, alpha=0.5)
+        cmap = plt.get_cmap("inferno")
+
+        conditioned_marker = ["o" if a else "x" for a in accepted]
+        mscatter(
+            iterations,
+            temps,
+            ax=first_ax,
+            m=conditioned_marker,
+            c=temps,
+            cmap=cmap,
+            norm=LogNorm(),
+            s=7,
+        )
+        mscatter(
+            iterations,
+            acc_ratios,
+            ax=second_ax,
+            m=conditioned_marker,
+            c=temps,
+            cmap=cmap,
+            norm=LogNorm(),
+            s=7,
+        )
+        im = mscatter(
+            iterations,
+            losses,
+            ax=third_ax,
+            m=conditioned_marker,
+            c=temps,
+            cmap=cmap,
+            norm=LogNorm(),
+            s=7,
+        )
+        third_ax.plot([iterations[0], iterations[-1]], [final_loss[-1], final_loss[-1]], c="black")
+        third_ax.text(iterations[0], final_loss[-1], s=f"{round(final_loss[-1], 3)}", c="black")
+        fig.subplots_adjust(right=0.8)
+
+        add_colorbar(fig, im, first_ax, axisfontsize)
+        add_colorbar(fig, im, second_ax, axisfontsize)
+        add_colorbar(fig, im, third_ax, axisfontsize)
+
+        for iplot in range(0, nweights):
+            ax1 = fig.add_subplot(grid[iplot + 3, 0:5])
+            ax2 = fig.add_subplot(grid[iplot + 3, 5])
+            ax1.grid(True, ls="--", lw=0.2, alpha=0.5)
+            ax2.grid(True, ls="--", lw=0.2, alpha=0.5)
+            ax1.set_xlabel("Iterations")
+            ax1.set_ylabel(f"Weights {iplot if weights_names is None else weights_names[iplot]}")
+            ax2.set_ylabel("Loss")
+            ax2.set_xlabel(f"Weight {iplot if weights_names is None else weights_names[iplot]}")
+
+            mscatter(
+                iterations,
+                weights[:, iplot],
+                ax=ax1,
+                m=conditioned_marker,
+                s=7,
+                c=temps,
+                cmap=cmap,
+                norm=LogNorm(),
+            )
+            ax1.plot(
+                [iterations[0], iterations[-1]],
+                [final_weights[iplot], final_weights[iplot]],
+                c="black",
+            )
+            ax1.text(
+                iterations[0],
+                final_weights[iplot],
+                s=f"{round(final_weights[iplot], 3)}",
+                c="black",
+            )
+            mscatter(
+                weights[:, iplot],
+                losses,
+                ax=ax2,
+                m=conditioned_marker,
+                s=7,
+                c=temps,
+                cmap=cmap,
+                norm=LogNorm(),
+            )
+
+            if len(points) > 0:
+                for point in points:
+                    ax2.scatter(point[0][iplot], point[1], s=10, c="blue")
+            ax2.scatter(final_weights[iplot], final_loss, s=10, c="red")
+
+            add_colorbar(fig, im, ax2, axisfontsize)
+
+        fig.savefig(str(sampler_path / "annealing.pdf"))
+
+        if do_3d:
+
+            i_couples = list(itertools.combinations(range(nweights), 2))
+
+            def objective_2d(i_, j_, wi, wj):
+                ann_solution = self.results[0].reshape(-1, 1).copy()
+                ann_solution[i_] = wi
+                ann_solution[j_] = wj
+                return self.loss(ann_solution)
+
+            # TODO : it should work, but it does not. Understand why
+            # objective_couples = [
+            #     lambda wi, wj: objective_2d(ii, jj, wi, wj) for (ii, jj) in i_couples
+            # ]
+
+            # TODO : parallelise
+            for i, (col, row) in enumerate(i_couples):
+
+                specs = [[{"type": "surface"}]]
+
+                fig_3d = make_subplots(rows=1, cols=1, specs=specs)
+
+                fig_3d.update_yaxes(title_text=weights_names[row], row=1, col=1)
+                fig_3d.update_xaxes(title_text=weights_names[col], row=1, col=1)
+
+                explored_w_y = weights[:, row]
+                explored_w_x = weights[:, col]
+
+                w_y = np.linspace(np.min(explored_w_y), np.max(explored_w_y), 100)
+                w_x = np.linspace(np.min(explored_w_x), np.max(explored_w_x), 100)
+
+                domain = pd.DataFrame(data=np.zeros((100, 100)), index=w_y, columns=w_x)
+                for wy in domain.index:
+                    for wx in domain.columns:
+                        domain.loc[wy, wx] = objective_2d(col, row, wx, wy)
+
+                fig_3d.add_trace(
+                    go.Surface(
+                        z=domain.values,
+                        y=domain.index,
+                        x=domain.columns,
+                        colorscale="Blues",
+                        showscale=False,
+                        opacity=0.5,
+                    ),
+                    row=1,
+                    col=1,
+                )
+
+                z_explored = np.zeros_like(temps)
+                for k in range(len(temps)):
+                    z_explored[k] = objective_2d(col, row, explored_w_x[k], explored_w_y[k])
+
+                fig_3d.add_scatter3d(
+                    # for some reason, need to transpose
+                    x=explored_w_x,
+                    y=explored_w_y,
+                    z=z_explored,
+                    mode="markers",
+                    marker=dict(
+                        size=1.2,
+                        color=temps,
+                        symbol=list(map(lambda val: "x" if val else "circle", accepted)),
+                        showscale=True,
+                    ),
+                    row=1,
+                    col=1,
+                )
+
+                # TODO : add title to colorbar
+                fig_3d.add_scatter3d(
+                    # for some reason, need to transpose
+                    x=[self.results[0][col]],
+                    y=[self.results[0][row]],
+                    z=[self.results[1]],
+                    mode="markers",
+                    marker=dict(
+                        size=3,
+                        color="red",
+                        symbol="circle",
+                    ),
+                    row=1,
+                    col=1,
+                )
+
+                fig_3d.update_layout(
+                    scene=dict(
+                        xaxis_title=weights_names[col],
+                        yaxis_title=weights_names[row],
+                    )
+                )
+
+                fig_3d.write_html(
+                    str(sampler_path / f"3d_visualisation_{weights_names[col]}_{weights_names[row]}.html")
+                )
+
+        return fig, [final_weights, final_loss]
 
 
 def finish(sampler: Sampler) -> Tuple[np.ndarray, float, float, int]:
@@ -1136,7 +1561,12 @@ def finish(sampler: Sampler) -> Tuple[np.ndarray, float, float, int]:
     data = data.loc[mask]
     # noinspection PyUnresolvedReferences
     data = data.loc[(data["loss"] == data["loss"].min()).values]
-    return data["weights"].iloc[-1], data["loss"].iloc[-1], data["acc_ratio"].iloc[-1], data.index[-1]
+    return (
+        data["weights"].iloc[-1],
+        data["loss"].iloc[-1],
+        data["acc_ratio"].iloc[-1],
+        data.index[-1],
+    )
 
 
 def generate_init_states(
@@ -1173,7 +1603,8 @@ def generate_init_states(
     l1 = np.concatenate((zeros, ones))
     l2 = np.concatenate((ones, zeros))
     init_states_indexes = np.array(
-        list(distinct_combinations(l1, dim)) + list(distinct_combinations(l2, dim))[1:-1], dtype=np.uint8
+        list(distinct_combinations(l1, dim)) + list(distinct_combinations(l2, dim))[1:-1],
+        dtype=np.uint8,
     )
     if npoints < init_states_indexes.shape[0]:
         to_keep = np.random.permutation(np.arange(0, init_states_indexes.shape[0]))
@@ -1195,6 +1626,46 @@ def generate_init_states(
     if npoints > init_states_indexes.shape[0]:
         for _ in range(npoints - len(init_states)):
             init_states.append(
-                bounds[:, 0] + step_size + np.random.uniform(size=(1, len(bounds))) * (bounds[:, 1] - bounds[:, 0])
+                (bounds[:, 0] + step_size + np.random.uniform(size=(1, len(bounds))) * (bounds[:, 1] - bounds[:, 0]))[
+                    0
+                ].tolist()
             )
     return np.array(init_states)
+
+
+def mscatter(x, y, ax=None, m=None, **kw):
+    if not ax:
+        ax = plt.gca()
+    sc = ax.scatter(x, y, **kw)
+    if (m is not None) and (len(m) == len(x)):
+        paths = []
+        for marker in m:
+            if isinstance(marker, mmarkers.MarkerStyle):
+                marker_obj = marker
+            else:
+                marker_obj = mmarkers.MarkerStyle(marker)
+            path = marker_obj.get_path().transformed(marker_obj.get_transform())
+            paths.append(path)
+        sc.set_paths(paths)
+    return sc
+
+
+def make_segments(x, y):
+    points = np.array([x, y]).T.reshape(-1, 1, 2)
+    segments = np.concatenate([points[:-1], points[1:]], axis=1)
+    return segments
+
+
+def add_colorbar(fig, im, ax, axisfontsize):
+
+    cbar_ax = fig.add_axes(
+        [
+            ax.get_position().xmax + 0.01,
+            ax.get_position().ymin,
+            0.025,
+            ax.get_position().ymax - ax.get_position().ymin,
+        ]
+    )
+    cbar = fig.colorbar(im, cax=cbar_ax)
+    cbar_ax.yaxis.labelpad = 15
+    cbar.set_label("Temperature", rotation=270, fontsize=axisfontsize)

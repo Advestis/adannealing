@@ -41,17 +41,39 @@ Simple usage :
 ```python
 from adannealing import Annealer
 
-def loss_func_2d(w) -> float:
-    x = w[0]
-    y = w[1]
-    return (x - 5) * (x - 2) * (x - 1) * x + 10 * y ** 2
+class LossFunc2D:
+    def __init__(self):
+        self.constraints = None
 
-init_states, bounds, acceptance = (3.0, 0.5), ((0, 5), (-1, 1)), 0.01
+    def __call__(self, w) -> float:
+        """
+        A __call__ method must be present. It will be called to evaluate the loss. The argument passed is the 
+        parameter value at which the loss has to be computed.
+        """
+        x = w[0]
+        y = w[1]
+        return (x - 5) * (x - 2) * (x - 1) * x + 10 * y ** 2
+
+    def on_fit_start(self, val):
+        """
+        This method is called by the fitter before optimisation. The argument passed is either the starting point of the
+        optimiser (for single annealer) or the tuple containing different starting points if more than one annealer is used
+        """
+        pass
+
+    def on_fit_end(self, val):
+        """
+        This method is called by the fitter after optimisation. The argument passed is either the result of the 
+        optimiser (for single annealer) or the list of results if more than one annealer reache the end of fit.
+        """
+        pass
+
+init_states, bounds, acceptance = (3.0, 0.5), np.array([[0, 5], [-1, 1]]), 0.01
 
 ann = Annealer(
-    loss=loss_func_2d,
+    loss=LossFunc2D(),
     weights_step_size=0.1,
-    init_states=init_states,  # Optionnal
+    init_states=init_states,  # Optional
     bounds=bounds,
     verbose=True
 )
@@ -67,15 +89,37 @@ from adannealing import Annealer
 Annealer.set_parallel()
 
 
-def loss_func_2d(w) -> float:
-    x = w[0]
-    y = w[1]
-    return (x - 5) * (x - 2) * (x - 1) * x + 10 * y ** 2
+class LossFunc2D:
+    def __init__(self):
+        self.constraints = None
 
-bounds, acceptance, n = ((0, 5), (-1, 1)), 0.01, 5
+    def __call__(self, w) -> float:
+        """
+        A __call__ method must be present. It will be called to evaluate the loss. The argument passed is the 
+        parameter value at which the loss has to be computed.
+        """
+        x = w[0]
+        y = w[1]
+        return (x - 5) * (x - 2) * (x - 1) * x + 10 * y ** 2
+
+    def on_fit_start(self, val):
+        """
+        This method is called by the fitter before optimisation. The argument passed is either the starting point of the
+        optimiser (for single annealer) or the tuple containing different starting points if more than one annealer is used
+        """
+        pass
+
+    def on_fit_end(self, val):
+        """
+        This method is called by the fitter after optimisation. The argument passed is either the result of the 
+        optimiser (for single annealer) or the list of results if more than one annealer reache the end of fit.
+        """
+        pass
+
+bounds, acceptance, n =  np.array([[0, 5], [-1, 1]]), 0.01, 5
 
 ann = Annealer(
-    loss=loss_func_2d,
+    loss=LossFunc2D(),
     weights_step_size=0.1,
     bounds=bounds,
     verbose=True
@@ -95,16 +139,41 @@ from adannealing import Annealer
 Annealer.set_parallel()
 
 
-def loss_func_2d(w) -> float:
-    x = w[0]
-    y = w[1]
-    return (x - 5) * (x - 2) * (x - 1) * x + 10 * y ** 2
+class LossFunc2D:
+    def __init__(self):
+        self.constraints = None
 
+class LossFunc2D:
+    def __init__(self):
+        self.constraints = None
 
-bounds, acceptance, n = ((0, 5), (-1, 1)), 0.01, 5
+    def __call__(self, w) -> float:
+        """
+        A __call__ method must be present. It will be called to evaluate the loss. The argument passed is the 
+        parameter value at which the loss has to be computed.
+        """
+        x = w[0]
+        y = w[1]
+        return (x - 5) * (x - 2) * (x - 1) * x + 10 * y ** 2
+
+    def on_fit_start(self, val):
+        """
+        This method is called by the fitter before optimisation. The argument passed is either the starting point of the
+        optimiser (for single annealer) or the tuple containing different starting points if more than one annealer is used
+        """
+        pass
+
+    def on_fit_end(self, val):
+        """
+        This method is called by the fitter after optimisation. The argument passed is either the result of the 
+        optimiser (for single annealer) or the list of results if more than one annealer reache the end of fit.
+        """
+        pass
+
+bounds, acceptance, n = np.array([[0, 5], [-1, 1]]), 0.01, 5
 
 ann = Annealer(
-    loss=loss_func_2d,
+    loss=LossFunc2D(),
     weights_step_size=0.1,
     bounds=bounds,
     verbose=True
@@ -121,17 +190,38 @@ from adannealing import Annealer
 
 Annealer.set_parallel()
 
+class LossFunc2D:
+    def __init__(self):
+        self.constraints = None
 
-def loss_func_2d(w) -> float:
-    x = w[0]
-    y = w[1]
-    return (x - 5) * (x - 2) * (x - 1) * x + 10 * y ** 2
+    def __call__(self, w) -> float:
+        """
+        A __call__ method must be present. It will be called to evaluate the loss. The argument passed is the 
+        parameter value at which the loss has to be computed.
+        """
+        x = w[0]
+        y = w[1]
+        return (x - 5) * (x - 2) * (x - 1) * x + 10 * y ** 2
+
+    def on_fit_start(self, val):
+        """
+        This method is called by the fitter before optimisation. The argument passed is either the starting point of the
+        optimiser (for single annealer) or the tuple containing different starting points if more than one annealer is used
+        """
+        pass
+
+    def on_fit_end(self, val):
+        """
+        This method is called by the fitter after optimisation. The argument passed is either the result of the 
+        optimiser (for single annealer) or the list of results if more than one annealer reache the end of fit.
+        """
+        pass
 
 
-bounds, acceptance, n = ((0, 5), (-1, 1)), 0.01, 5
+bounds, acceptance, n = np.array([[0, 5], [-1, 1]]), 0.01, 5
 
 ann = Annealer(
-    loss=loss_func_2d,
+    loss=LossFunc2D(),
     weights_step_size=0.1,
     bounds=bounds,
     verbose=True
@@ -153,8 +243,8 @@ directly in **logs**, and will delete the subfolders of the runs that did not pr
 One can plot the result of a fit by doing
 
 ```python
-from adannealing import plot
-
 # figure will be saved in logs/annealing.pdf
-fig = plot("logs", nweights=2, weights_names=["A", "B", "C"])
+fig = ann.plot("logs", nweights=2, weights_names=["A", "B", "C"], do_3d=True)
 ```
+
+If the argument *do_3d=True*, then 3-dimensional dynamical figures are produced to inspect the phase space marginalised over different couples of components.
