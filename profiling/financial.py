@@ -69,9 +69,9 @@ class LossPortfolioMeanVar(AbstractLoss):
                 logger.info("The solution DOES respect the constraints.")
 
         if self.lambda_sparse:
-            sparse_term = np.linalg.norm(solution) ** 2 - np.linalg.norm(solution, ord=1) ** 2 * self.sparsity_target
+            your_sprasity = np.linalg.norm(solution) ** 2 / np.linalg.norm(solution, ord=1) ** 2
             try:
-                assert np.isclose(sparse_term, 0.0, atol=1e-3)
+                assert np.isclose(your_sprasity, self.sparsity_target, rtol=1e-2)
             except AssertionError:
                 logger.info("The solution DOES NOT meet the requested level of sparsity.")
                 your_sprasity = np.linalg.norm(solution) ** 2 / np.linalg.norm(solution, ord=1) ** 2
@@ -124,11 +124,11 @@ class LossPortfolioMeanVar(AbstractLoss):
             logger.info("Code has run with several annealers. List of different inital points:")
             for i, initial_status in enumerate(self.init_loss_status):
                 logger.info(f"------Initial Status Annealer {i}------")
-                logger.info(initial_status["status"])
+                logging.info(", ".join([f"{key} : {value:.3e}" for key, value in initial_status["status"].items()]))
 
         elif isinstance(self.init_loss_status, dict):
             logger.info("------Initial Status components------")
-            logger.info(self.init_loss_status)
+            logging.info(", ".join([f"{key} : {value:.3e}" for key, value in self.init_loss_status.items()]))
 
         else:
             raise RuntimeError("Unknown initial status loss.")
@@ -139,12 +139,18 @@ class LossPortfolioMeanVar(AbstractLoss):
             logger.info("Code has reached the end with several annealers. List of different final points:")
             for i, final_status in enumerate(best_fit):
                 logger.info(f"------Final Status Annealer {i}-------")
-                logger.info(self.__call__(final_status[0].reshape(-1, 1)))
+                logger.info(
+                    ", ".join(
+                        [f"{key} : {value:.3e}" for key, value in self.__call__(final_status[0].reshape(-1, 1)).items()]
+                    )
+                )
                 self.check_solution(final_status[0].reshape(-1, 1))
 
         elif isinstance(best_fit, tuple):
             logger.info("------Single Final Status components------")
-            logger.info(self.__call__(best_fit[0].reshape(-1, 1)))
+            logging.info(
+                ", ".join([f"{key} : {value:.3e}" for key, value in self.__call__(best_fit[0].reshape(-1, 1)).items()])
+            )
             self.check_solution(best_fit[0].reshape(-1, 1))
 
         else:

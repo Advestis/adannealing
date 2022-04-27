@@ -37,7 +37,6 @@ from profiling.financial import (
 )
 
 Annealer.set_cpu_limit(1)
-
 logger = logging.getLogger(__name__)
 
 (
